@@ -1,0 +1,33 @@
+{
+  "name": "use-as-dictionary",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Esempio Vue e Webpack con Compression Dictionary Transport per CSS",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "webpack --mode production",
+    "build:watch": "webpack --mode production --watch",
+    "serve": "node server/index.cjs",
+    "start": "npm run build && npm run serve",
+    "test": "npm run build && node --test test/*.test.cjs",
+    "test:browser": "npm run build && playwright test"
+  },
+  "dependencies": {
+    "vue": "3.5.43"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "brotli-wasm-custom-dictionary": "3.1.1",
+    "css-loader": "7.1.5",
+    "css-minimizer-webpack-plugin": "8.0.0",
+    "cssnano": "7.1.9",
+    "html-webpack-plugin": "5.6.8",
+    "mini-css-extract-plugin": "2.10.2",
+    "postcss": "8.5.29",
+    "vue-loader": "17.4.2",
+    "webpack": "5.111.1",
+    "webpack-cli": "7.2.3"
+  }
+}

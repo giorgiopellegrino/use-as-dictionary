@@ -1,0 +1,7 @@
+node_modules/
+build/
+test-results/
+playwright-report/
+*.log
+.env
+.certs/
