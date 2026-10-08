@@ -5,6 +5,7 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CompressionDictionaryPlugin = require('./webpack/CompressionDictionaryPlugin.cjs');
+const CompressionDictionaryPluginProd = require('./webpack/production/CompressionDictionaryPlugin.cjs');
 
 module.exports = {
   entry: './src/main.js',
@@ -38,6 +39,11 @@ module.exports = {
     new CompressionDictionaryPlugin({
       dictionarySource: path.resolve(__dirname, 'dictionaries/styles.v1.css'),
       match: '/dist/styles.*.css',
+    }),
+    new CompressionDictionaryPluginProd({
+      input: path.resolve(__dirname, 'src/styles.3772401f5d.css'),
+      dcbFilename: 'dist/styles.3772401f5d.css.dcb',
+      dictionaryFilename: 'dictionaries/styles.[hash].dat',
     }),
   ],
 };
