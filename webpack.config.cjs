@@ -40,7 +40,7 @@ module.exports = {
       dictionarySource: path.resolve(__dirname, 'dictionaries/styles.v1.css'),
       match: '/dist/styles.*.css',
     }),
-    //Ray-Ban CSS example
+    //Ray-Ban CSS example only to generate dictionary+css.dcb
     new CompressionDictionaryPluginProd({
       input: path.resolve(__dirname, 'src/styles.3772401f5d.css'),
       dictionarySource: path.resolve(__dirname, 'dictionaries/styles.3772401f5d.dat'),
