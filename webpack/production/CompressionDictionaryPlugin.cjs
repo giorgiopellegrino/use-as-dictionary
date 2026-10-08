@@ -5,6 +5,8 @@ const brotli = require('brotli-wasm-custom-dictionary');
 const PLUGIN_NAME = 'CompressionDictionaryPlugin';
 const MAGIC = Buffer.from([0xff, 0x44, 0x43, 0x42]);
 const MAX_DICTIONARY_BYTES = 2 ** 22 - 16; // Window used by this WASM encoder.
+const MANIFEST_FILENAME = 'dist/compression-dictionary-manifest.json';
+const manifests = new WeakMap();
 
 const pathKey = (filename) => process.platform === 'win32' ? filename.toLowerCase() : filename;
 
@@ -16,7 +18,7 @@ function validateOutputName(name) {
 }
 
 /**
- * Webpack 5: emit raw dictionaries and DCB representations of files or final assets.
+ * Webpack 5: emit raw dictionaries, DCB representations and a dictionary hash manifest.
  * HTTP headers, discovery, fallback compression and deployment belong to the caller.
  */
 class CompressionDictionaryPlugin {
@@ -77,6 +79,30 @@ class CompressionDictionaryPlugin {
       if (inputPath) compilation.fileDependencies.add(inputPath);
       if (dictionaryPath) compilation.fileDependencies.add(dictionaryPath);
 
+      // All instances contribute to one manifest, scoped to this compilation.
+      let manifest = manifests.get(compilation);
+      if (!manifest) {
+        manifest = { dictionaries: new Map(), sourcePaths: new Set() };
+        manifests.set(compilation, manifest);
+        compilation.hooks.processAssets.tap({
+          name: `${PLUGIN_NAME}:manifest`,
+          stage: Compilation.PROCESS_ASSETS_STAGE_REPORT,
+        }, () => {
+          if (manifest.sourcePaths.has(pathKey(path.resolve(compiler.outputPath, MANIFEST_FILENAME)))) {
+            throw new Error(`${PLUGIN_NAME}: output ${MANIFEST_FILENAME} would overwrite an input file.`);
+          }
+          if (compilation.getAsset(MANIFEST_FILENAME)) {
+            throw new Error(`${PLUGIN_NAME}: output collision at ${MANIFEST_FILENAME}; this path is reserved for the dictionary manifest.`);
+          }
+          const dictionaries = Object.fromEntries([...manifest.dictionaries.entries()]
+            .sort(([first], [second]) => first < second ? -1 : first > second ? 1 : 0));
+          compilation.emitAsset(MANIFEST_FILENAME,
+            new RawSource(`${JSON.stringify({ dictionaries }, null, 2)}\n`),
+            { compressionDictionary: 'manifest' });
+        });
+      }
+      for (const sourcePath of sourcePaths) manifest.sourcePaths.add(sourcePath);
+
       compilation.hooks.processAssets.tapPromise({
         name: PLUGIN_NAME,
         // Read minified bytes and final filenames, after real content hashing.
@@ -99,7 +125,7 @@ class CompressionDictionaryPlugin {
         const assets = inputPath
           ? [{ name: path.basename(inputPath), source: new RawSource(await readFile(inputPath, 'input')) }]
           : compilation.getAssets().filter(({ name, info }) => {
-            // Multiple instances must never use generated dictionaries/DCB as inputs.
+            // Multiple instances must never use generated assets as inputs.
             if (info.compressionDictionary) return false;
             if (typeof this.test === 'string') return name === this.test;
             this.test.lastIndex = 0;
@@ -112,10 +138,14 @@ class CompressionDictionaryPlugin {
 
         // Check every output before publishing any assets from this instance.
         const outputs = new Map();
+        const dictionaries = new Map();
         const queue = (name, bytes, kind) => {
           validateOutputName(name);
-          if (sourcePaths.has(pathKey(path.resolve(compiler.outputPath, name)))) {
+          if (manifest.sourcePaths.has(pathKey(path.resolve(compiler.outputPath, name)))) {
             throw new Error(`${PLUGIN_NAME}: output ${name} would overwrite an input file.`);
+          }
+          if (pathKey(name) === pathKey(MANIFEST_FILENAME)) {
+            throw new Error(`${PLUGIN_NAME}: output collision at ${name}; this path is reserved for the dictionary manifest.`);
           }
           const existing = outputs.get(name) || compilation.getAsset(name);
           if (existing) {
@@ -137,6 +167,8 @@ class CompressionDictionaryPlugin {
           const hash = createHash('sha256').update(dictionary).digest();
           const dictionaryName = this.dictionaryFilename.replaceAll('[hash]', hash.toString('hex'));
           queue(dictionaryName, dictionary, 'dictionary');
+          const sha256Base64 = hash.toString('base64');
+          dictionaries.set(dictionaryName, { sha256Base64, availableDictionary: `:${sha256Base64}:` });
 
           const compressed = Buffer.from(brotli.compress(content, {
             quality: this.quality,
@@ -148,6 +180,7 @@ class CompressionDictionaryPlugin {
         for (const [name, { bytes, kind }] of outputs) {
           compilation.emitAsset(name, new RawSource(bytes), { compressionDictionary: kind });
         }
+        for (const [name, entry] of dictionaries) manifest.dictionaries.set(name, entry);
       });
     });
   }

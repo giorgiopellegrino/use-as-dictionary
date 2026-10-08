@@ -9,6 +9,7 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const brotli = require('brotli-wasm-custom-dictionary');
 const CompressionDictionaryPlugin = require('../webpack/production/CompressionDictionaryPlugin.cjs');
+const MANIFEST_NAME = 'dist/compression-dictionary-manifest.json';
 
 function fixture(t, files = {}) {
   const temporaryRoot = path.resolve(os.tmpdir());
@@ -86,13 +87,32 @@ function dictionaryAssets(assets) {
   return [...assets.keys()].filter((name) => name.endsWith('.dat'));
 }
 
+function assertManifest(assets) {
+  const bytes = assets.get(MANIFEST_NAME);
+  assert.ok(bytes, 'Missing production dictionary manifest');
+  const manifest = JSON.parse(bytes.toString('utf8'));
+  const dictionaryNames = dictionaryAssets(assets).sort();
+  assert.deepEqual(Object.keys(manifest), ['dictionaries']);
+  assert.deepEqual(Object.keys(manifest.dictionaries), dictionaryNames, 'Manifest entries must be complete and sorted');
+  for (const name of dictionaryNames) {
+    const sha256Base64 = createHash('sha256').update(assets.get(name)).digest('base64');
+    assert.deepEqual(manifest.dictionaries[name], {
+      sha256Base64,
+      availableDictionary: `:${sha256Base64}:`,
+    });
+  }
+  return manifest;
+}
+
 function assertDcb(assets, assetName, dictionaryName, expected = assets.get(assetName)) {
+  const manifest = assertManifest(assets);
   const dictionary = assets.get(dictionaryName);
   const dcb = assets.get(`${assetName}.dcb`);
   assert.ok(dictionary, `Missing dictionary ${dictionaryName}`);
   assert.ok(dcb, `Missing DCB for ${assetName}`);
   assert.deepEqual(dcb.subarray(0, 4), Buffer.from([0xff, 0x44, 0x43, 0x42]));
   assert.deepEqual(dcb.subarray(4, 36), createHash('sha256').update(dictionary).digest());
+  assert.equal(dcb.subarray(4, 36).toString('base64'), manifest.dictionaries[dictionaryName].sha256Base64);
   assert.deepEqual(
     Buffer.from(brotli.decompress(dcb.subarray(36), { customDictionary: dictionary })),
     expected,
@@ -115,7 +135,7 @@ function cssBuild(project, dictionaryPlugins = []) {
   });
 }
 
-test('production: emits only dictionary and DCB additions for the final minified, hashed CSS', async (t) => {
+test('production: emits dictionary, DCB and manifest additions for the final minified, hashed CSS', async (t) => {
   const project = fixture(t, {
     'entry.js': 'import "./styles.css";',
     'styles.css': '/* source formatting */\n.card { color: #ffffff; margin: 0px 0px 0px 0px; }\n',
@@ -128,7 +148,7 @@ test('production: emits only dictionary and DCB additions for the final minified
   const hash = createHash('sha256').update(result.assets.get(cssName)).digest('hex');
   const dictionaryName = `dictionaries/${hash}.dat`;
   const additions = [...result.assets.keys()].filter((name) => !baseline.assets.has(name)).sort();
-  assert.deepEqual(additions, [dictionaryName, `${cssName}.dcb`].sort());
+  assert.deepEqual(additions, [dictionaryName, `${cssName}.dcb`, MANIFEST_NAME].sort());
   for (const [name, bytes] of baseline.assets) assert.deepEqual(result.assets.get(name), bytes);
   assert.deepEqual(result.assets.get(dictionaryName), result.assets.get(cssName));
   assertDcb(result.assets, cssName, dictionaryName);
@@ -283,7 +303,7 @@ test('production: rejects dictionary filenames outside the output directory or w
   }
 });
 
-test('production: a ready CSS file produces only its raw dictionary and DCB, without resolving CSS imports or URLs', async (t) => {
+test('production: a ready CSS file produces its dictionary, DCB and manifest without resolving CSS imports or URLs', async (t) => {
   const original = Buffer.concat([
     Buffer.from([0xef, 0xbb, 0xbf]),
     Buffer.from('@import "./missing.css";\r\n@font-face { font-family: example; src: url(./missing.woff2); }\r\n'),
@@ -293,7 +313,7 @@ test('production: a ready CSS file produces only its raw dictionary and DCB, wit
     new CompressionDictionaryPlugin({ input: 'ready/styles.ready.css' }),
   ], { entry: {} });
   const dictionaryName = `dictionaries/${createHash('sha256').update(original).digest('hex')}.dat`;
-  assert.deepEqual([...result.assets.keys()].sort(), [dictionaryName, 'styles.ready.css.dcb'].sort());
+  assert.deepEqual([...result.assets.keys()].sort(), [dictionaryName, 'styles.ready.css.dcb', MANIFEST_NAME].sort());
   assert.deepEqual(result.assets.get(dictionaryName), original);
   assertDcb(result.assets, 'styles.ready.css', dictionaryName, original);
   const inputPath = path.join(project.directory, 'ready/styles.ready.css');
@@ -328,7 +348,7 @@ test('production: direct inputs support a custom DCB path and reload the input a
     [second, firstDictionary, firstSnapshot, secondInput],
     [third, secondDictionary, secondSnapshot, secondInput],
   ]) {
-    assert.deepEqual([...result.assets.keys()].sort(), [dictionaryName, 'dist/css/app.css.dcb'].sort());
+    assert.deepEqual([...result.assets.keys()].sort(), [dictionaryName, 'dist/css/app.css.dcb', MANIFEST_NAME].sort());
     assert.deepEqual(result.assets.get(dictionaryName), snapshot);
     assertDcb(result.assets, 'dist/css/app.css', dictionaryName, input);
     assert.ok(result.fileDependencies.has(inputPath));
@@ -350,7 +370,7 @@ test('production: direct-file instances require distinct DCB paths when inputs s
     new CompressionDictionaryPlugin({ input: 'first/app.css', dcbFilename: 'first/app.css.dcb' }),
     new CompressionDictionaryPlugin({ input: 'second/app.css', dcbFilename: 'second/app.css.dcb' }),
   ], { entry: {} });
-  assert.equal(result.assets.size, 4);
+  assert.equal(result.assets.size, 5);
   for (const [name, bytes] of [['first/app.css', first], ['second/app.css', second]]) {
     const dictionaryName = `dictionaries/${createHash('sha256').update(bytes).digest('hex')}.dat`;
     assertDcb(result.assets, name, dictionaryName, bytes);
@@ -406,4 +426,126 @@ test('production: input and test are mutually exclusive and DCB filenames belong
   ]) {
     assert.throws(() => new CompressionDictionaryPlugin(options));
   }
+});
+
+test('production: one sorted manifest aggregates mixed instances, deduplicates shared dictionaries and resets on rebuild', async (t) => {
+  const shared = Buffer.from('.shared { display: grid; }');
+  const current = Buffer.from('.current { color: blue; }');
+  const oldSnapshot = Buffer.from('.snapshot { color: red; }');
+  const newSnapshot = Buffer.from('.snapshot { color: green; }');
+  const project = fixture(t, {
+    'ready/current.css': current,
+    'ready/shared.css': shared,
+    'snapshots/previous.css': oldSnapshot,
+  });
+  const outputPath = path.join(project.directory, 'build');
+  const compiler = webpack({
+    mode: 'production',
+    context: project.directory,
+    entry: {},
+    output: { path: outputPath, clean: true },
+    cache: false,
+    devtool: false,
+    optimization: { minimize: false },
+    plugins: [
+      new EmitAssetsPlugin({ 'generated.css': shared }),
+      new CompressionDictionaryPlugin({ test: 'generated.css', dictionaryFilename: 'dictionaries/z-shared.dat' }),
+      new CompressionDictionaryPlugin({
+        input: 'ready/current.css',
+        dictionarySource: 'snapshots/previous.css',
+        dictionaryFilename: 'dictionaries/a-frozen.[hash].dat',
+      }),
+      new CompressionDictionaryPlugin({ input: 'ready/shared.css', dictionaryFilename: 'dictionaries/z-shared.dat' }),
+    ],
+  });
+  const build = async () => {
+    const stats = await new Promise((resolve, reject) => {
+      compiler.run((error, result) => error ? reject(error) : resolve(result));
+    });
+    assert.equal(stats.hasErrors(), false, stats.toString({ all: false, errors: true }));
+    return new Map(stats.compilation.getAssets().map(({ name }) => [
+      name, fs.readFileSync(path.join(outputPath, name)),
+    ]));
+  };
+  try {
+    const first = await build();
+    project.write('snapshots/previous.css', newSnapshot);
+    const second = await build();
+    const firstName = `dictionaries/a-frozen.${createHash('sha256').update(oldSnapshot).digest('hex')}.dat`;
+    const secondName = `dictionaries/a-frozen.${createHash('sha256').update(newSnapshot).digest('hex')}.dat`;
+    for (const [assets, frozenName] of [[first, firstName], [second, secondName]]) {
+      const manifest = assertManifest(assets);
+      assert.deepEqual(Object.keys(manifest.dictionaries), [frozenName, 'dictionaries/z-shared.dat']);
+      assert.equal([...assets.keys()].filter((name) => name.endsWith('.json')).length, 1);
+      assertDcb(assets, 'generated.css', 'dictionaries/z-shared.dat');
+      assertDcb(assets, 'shared.css', 'dictionaries/z-shared.dat', shared);
+      assertDcb(assets, 'current.css', frozenName, current);
+    }
+    assert.ok(!second.has(firstName), 'The old snapshot must not remain in a later compilation');
+    assert.ok(!Object.hasOwn(assertManifest(second).dictionaries, firstName));
+  } finally {
+    await new Promise((resolve, reject) => compiler.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test('production: manifest path collisions fail instead of overwriting other outputs', async (t) => {
+  await t.test('an existing asset owns the manifest filename', async (t) => {
+    const project = fixture(t);
+    await assert.rejects(project.build([
+      new EmitAssetsPlugin({ 'app.css': '.card { color: red; }', [MANIFEST_NAME]: '{"existing":true}' }),
+      new CompressionDictionaryPlugin({ test: 'app.css' }),
+    ]));
+  });
+  await t.test('a dictionary cannot use the manifest filename', async (t) => {
+    const project = fixture(t);
+    await assert.rejects(project.build([
+      new EmitAssetsPlugin({ 'app.css': '.card { color: red; }' }),
+      new CompressionDictionaryPlugin({ test: 'app.css', dictionaryFilename: MANIFEST_NAME }),
+    ]));
+  });
+  await t.test('a DCB cannot use the manifest filename', async (t) => {
+    const project = fixture(t, { 'ready/app.css': '.card { color: red; }' });
+    await assert.rejects(project.build([
+      new CompressionDictionaryPlugin({ input: 'ready/app.css', dcbFilename: MANIFEST_NAME }),
+    ], { entry: {} }));
+  });
+  await t.test('manifest filename reservations ignore casing on Windows', { skip: process.platform !== 'win32' }, async (t) => {
+    const project = fixture(t, { 'ready/app.css': '.card { color: red; }' });
+    await assert.rejects(project.build([
+      new CompressionDictionaryPlugin({ input: 'ready/app.css', dcbFilename: MANIFEST_NAME.toUpperCase() }),
+    ], { entry: {} }));
+  });
+});
+
+test('production: the aggregated manifest cannot overwrite any instance input or frozen snapshot', async (t) => {
+  await t.test('a later direct-file instance uses the manifest path as input', async (t) => {
+    const original = Buffer.from('original input file bytes');
+    const inputPath = `build/${MANIFEST_NAME}`;
+    const project = fixture(t, { 'ready/app.css': '.card { color: red; }', [inputPath]: original });
+    await assert.rejects(project.build([
+      new CompressionDictionaryPlugin({ input: 'ready/app.css' }),
+      new CompressionDictionaryPlugin({ input: inputPath, dcbFilename: 'original.dcb' }),
+    ], { entry: {} }));
+    assert.deepEqual(fs.readFileSync(path.join(project.directory, inputPath)), original);
+  });
+  await t.test('a later asset-mode instance uses the manifest path as dictionarySource', async (t) => {
+    const snapshot = Buffer.from('original snapshot file bytes');
+    const snapshotPath = `build/${MANIFEST_NAME}`;
+    const project = fixture(t, { 'ready/app.css': '.card { color: red; }', [snapshotPath]: snapshot });
+    await assert.rejects(project.build([
+      new EmitAssetsPlugin({ 'generated.css': '.generated { color: blue; }' }),
+      new CompressionDictionaryPlugin({ input: 'ready/app.css' }),
+      new CompressionDictionaryPlugin({ test: 'generated.css', dictionarySource: snapshotPath }),
+    ], { entry: {} }));
+    assert.deepEqual(fs.readFileSync(path.join(project.directory, snapshotPath)), snapshot);
+  });
+  await t.test('manifest source protection ignores casing on Windows', { skip: process.platform !== 'win32' }, async (t) => {
+    const snapshot = Buffer.from('original snapshot with uppercase path');
+    const snapshotPath = `build/${MANIFEST_NAME.toUpperCase()}`;
+    const project = fixture(t, { 'ready/app.css': '.card { color: red; }', [snapshotPath]: snapshot });
+    await assert.rejects(project.build([
+      new CompressionDictionaryPlugin({ input: 'ready/app.css', dictionarySource: snapshotPath }),
+    ], { entry: {} }));
+    assert.deepEqual(fs.readFileSync(path.join(project.directory, snapshotPath)), snapshot);
+  });
 });

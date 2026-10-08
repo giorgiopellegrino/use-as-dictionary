@@ -2,7 +2,7 @@
 
 Esempio funzionante basato su **CBP-Performance _ Use-As-Dictionary-080926-173936.pdf**, presente nella cartella del progetto. Vue usa un normale foglio di stile; Webpack genera il dizionario e le rappresentazioni compresse; un server Node sceglie quella compatibile con il browser.
 
-Per integrare solo la generazione di **dizionari `.dat` e risorse `.dcb`** nella tua applicazione, usa il nuovo [plugin per la produzione](webpack/production/README.md). Accetta un file già pronto tramite `input` oppure gli asset della build tramite `test`, supporta più istanze e lascia gli header al server, senza generare manifest o modificare l'HTML. Il plugin della demo resta dedicato alla pagina Vue e alle sue statistiche.
+Per integrare la generazione di **dizionari `.dat` e risorse `.dcb`** nella tua applicazione, usa il [plugin per la produzione](webpack/production/README.md). Accetta un file già pronto tramite `input` oppure gli asset della build tramite `test`, supporta più istanze e genera `dist/compression-dictionary-manifest.json` con gli hash Base64 dei dizionari per il deploy. Lascia gli header al server e non modifica l'HTML. Il plugin della demo resta dedicato alla pagina Vue e alle sue statistiche.
 
 ## Avvio
 

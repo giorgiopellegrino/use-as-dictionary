@@ -1,6 +1,6 @@
 # CompressionDictionaryPlugin per la produzione
 
-Plugin per **Webpack 5** che aggiunge alla build soltanto dizionari raw `.dat` e rappresentazioni compresse `.dcb`. Usa `brotli-wasm-custom-dictionary`, già presente nelle dipendenze del progetto. Per copiarlo in un altro progetto serve anche questa dipendenza di build.
+Plugin per **Webpack 5** che aggiunge alla build dizionari raw `.dat`, rappresentazioni compresse `.dcb` e un manifest con gli hash dei dizionari. Usa `brotli-wasm-custom-dictionary`, già presente nelle dipendenze del progetto. Per copiarlo in un altro progetto serve anche questa dipendenza di build.
 
 ## Un file già pronto in input
 
@@ -18,11 +18,12 @@ new CompressionDictionaryPlugin({
 });
 ```
 
-La build produce questi due file, relativi a `output.path`:
+La build produce questi tre file, relativi a `output.path`:
 
 ```text
 dist/styles.3772401f5d.css.dcb
 dictionaries/styles.<sha256>.dat
+dist/compression-dictionary-manifest.json
 ```
 
 Con `input` **non serve `test`**. Il file viene letto come byte, senza importarlo nel bundle, passarlo ai loader o risolvere `url()` e `@import`. Il dizionario contiene quei byte e il DCB si decomprime nel file originale esatto. La pubblicazione del CSS originale resta a carico della tua applicazione.
@@ -47,6 +48,7 @@ Per ogni asset selezionato, il plugin legge i byte finali, dopo minificazione e 
 dist/styles.<contenthash>.css          Asset originale, conservato
 dist/styles.<contenthash>.css.dcb      Risorsa compressa con il dizionario
 dictionaries/<sha256>.dat              Dizionario raw
+dist/compression-dictionary-manifest.json  Manifest degli hash
 ```
 
 Sia con `input` sia con `test`, senza altre opzioni il `.dat` contiene gli stessi byte della risorsa da comprimere. Non c'è un processo di training: quei byte sono il dizionario esterno usato dall'encoder. Il suo nome usa il SHA-256 completo, in esadecimale; lo stesso hash, nei suoi 32 byte binari, è incluso nell'header DCB.
@@ -85,6 +87,27 @@ plugins: [
 
 Ogni istanza seleziona i propri asset. Il plugin lavora su byte e può comprimere anche JavaScript e altre risorse. I selettori devono essere disgiunti: due istanze che tentano di produrre lo stesso `.dcb` fanno fallire la build. Dizionari identici con lo stesso nome di output vengono invece condivisi.
 
+## Manifest degli hash
+
+Il plugin genera sempre `dist/compression-dictionary-manifest.json`, relativo a `output.path`. Nella configurazione di questo progetto il file si trova quindi in `build/dist/compression-dictionary-manifest.json`.
+
+```json
+{
+  "dictionaries": {
+    "dictionaries/styles.<sha256>.dat": {
+      "sha256Base64": "...=",
+      "availableDictionary": ":...=:"
+    }
+  }
+}
+```
+
+Ogni chiave è il percorso del dizionario **emesso**, relativo a `output.path`. `sha256Base64` è il SHA-256 dei byte raw del `.dat`, codificato in Base64; `availableDictionary` contiene lo stesso valore tra due `:`, nel formato dell'header HTTP. Entrambi derivano dagli stessi 32 byte di hash inseriti nel DCB.
+
+Il manifest raccoglie i dizionari di **tutte le istanze del plugin di produzione** della compilazione, ordinati per percorso, senza duplicare quelli condivisi. Viene ricreato a ogni build, anche in watch: una snapshot invariata mantiene lo stesso hash, mentre una snapshot modificata aggiorna la relativa voce. Il percorso del manifest è riservato; una collisione fa fallire la build.
+
+La pipeline di deploy può leggere `availableDictionary` per configurare su Akamai il valore atteso per il dizionario associato al DCB da servire. Il manifest non configura automaticamente la CDN e non sostituisce il controllo di `Accept-Encoding`. Il manifest della demo rimane separato.
+
 ## Opzioni
 
 | Opzione | Valore predefinito | Significato |
@@ -102,7 +125,7 @@ Devi specificare esattamente uno tra `input` e `test`. Con `test` il nome del DC
 
 La configurazione del server gestisce `Use-As-Dictionary` e il relativo `match`, la discovery del dizionario e la selezione della rappresentazione sulla base di `Accept-Encoding` e `Available-Dictionary`. Per una risposta DCB usa `Content-Encoding: dcb` e gestisci `Vary`; la risorsa originale resta disponibile per il fallback. Il formato e la negoziazione sono descritti nella [RFC 9842](https://www.rfc-editor.org/rfc/rfc9842.html#section-6).
 
-Il plugin non genera manifest, ID HTTP, link HTML, varianti `.br`/`.gz` o configurazioni del server. Non richiede `HtmlWebpackPlugin` e non modifica gli altri asset. Il nome esadecimale del dizionario non è il valore di `Available-Dictionary`: quell'header usa il SHA-256 dei byte del `.dat` codificato in base64.
+Il plugin non genera ID HTTP, link HTML, varianti `.br`/`.gz` o configurazioni del server. Non richiede `HtmlWebpackPlugin` e non modifica gli altri asset. Il nome esadecimale del dizionario non è il valore di `Available-Dictionary`: per quel confronto usa il campo `availableDictionary` del manifest.
 
 La demo esistente usa il plugin in `webpack/CompressionDictionaryPlugin.cjs`, con manifest e statistiche per la pagina Vue. La configurazione include anche un'istanza di questo plugin di produzione per elaborare `src/styles.3772401f5d.css`: i suoi output sono separati dal manifest e dalla negoziazione del server della demo.
 
@@ -112,4 +135,4 @@ La demo esistente usa il plugin in `webpack/CompressionDictionaryPlugin.cjs`, co
 node --test test/production-plugin.test.cjs
 ```
 
-I test eseguono build Webpack reali e verificano la decompressione dei DCB con i dizionari emessi. La fase usata è [`PROCESS_ASSETS_STAGE_OPTIMIZE_TRANSFER`](https://webpack.js.org/api/compilation-hooks/#processassets), successiva alla minificazione e al calcolo degli hash degli asset.
+I test eseguono build Webpack reali e verificano la decompressione dei DCB con i dizionari emessi e la corrispondenza degli hash nel manifest. I dizionari e i DCB sono generati nella fase [`PROCESS_ASSETS_STAGE_OPTIMIZE_TRANSFER`](https://webpack.js.org/api/compilation-hooks/#processassets), successiva alla minificazione e al calcolo degli hash degli asset. Il manifest viene emesso nella fase `PROCESS_ASSETS_STAGE_REPORT`, dopo aver raccolto i risultati di tutte le istanze.
