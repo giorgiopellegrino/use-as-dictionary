@@ -45,7 +45,7 @@ module.exports = {
       input: path.resolve(__dirname, 'src/styles.3772401f5d.css'),
       dictionarySource: path.resolve(__dirname, 'dictionaries/styles.3772401f5d.dat'),
       // dictionaryFilename: 'dictionaries/styles.[hash].dat',
-      dcbFilename: 'dist/styles.[hash].css.dcb',
+      dcbFilename: 'dist/styles.3772401f5d.css.dcb',
     }),
   ],
 };
