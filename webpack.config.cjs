@@ -38,10 +38,10 @@ module.exports = {
     }),
     new MiniCssExtractPlugin({ filename: 'dist/styles.[contenthash:16].css' }),
     new HtmlWebpackPlugin({ template: 'public/index.html' }),
-    new CompressionDictionaryPlugin({
-      dictionarySource: path.resolve(__dirname, 'dictionaries/styles.v1.css'),
-      match: '/dist/styles.*.css',
-    }),
+    // new CompressionDictionaryPlugin({
+    //   dictionarySource: path.resolve(__dirname, 'dictionaries/styles.v1.css'),
+    //   match: '/dist/styles.*.css',
+    // }),
     //Ray-Ban CSS example only to generate dictionary+css.dcb
     new CompressionDictionaryPluginProd({
       input: raybanCssInput,
