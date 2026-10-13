@@ -7,6 +7,8 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CompressionDictionaryPlugin = require('./webpack/CompressionDictionaryPlugin.cjs');
 const CompressionDictionaryPluginProd = require('./webpack/production/CompressionDictionaryPlugin.cjs');
 
+const raybanCssInput = path.resolve(__dirname, 'src/styles.3772401f5d.css');
+
 module.exports = {
   entry: './src/main.js',
   output: {
@@ -42,10 +44,12 @@ module.exports = {
     }),
     //Ray-Ban CSS example only to generate dictionary+css.dcb
     new CompressionDictionaryPluginProd({
-      input: path.resolve(__dirname, 'src/styles.3772401f5d.css'),
-      dictionarySource: path.resolve(__dirname, 'dictionaries/styles.3772401f5d.dat'),
-      // dictionaryFilename: 'dictionaries/styles.[hash].dat',
-      dcbFilename: 'dist/styles.3772401f5d.css.dcb',
+      input: raybanCssInput,
+      dictionarySource: 'dictionaries/dictionary_styles.dat',
+      autoUpdate: {
+        minSavings: 0.9,
+      },
+      dcbFilename: `dist/${path.basename(raybanCssInput)}.dcb`,
     }),
   ],
 };

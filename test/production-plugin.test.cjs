@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 const webpack = require('webpack');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
@@ -182,12 +183,11 @@ test('production: a frozen source is used byte-for-byte and reused after the CSS
   const plugin = new CompressionDictionaryPlugin({
     test: /\.css$/,
     dictionarySource: 'snapshots/styles.v1.css',
-    dictionaryFilename: 'snapshots/style.[hash].dat',
   });
   const first = await cssBuild(project, [plugin]);
   project.write('styles.css', '.card { color: orange; padding: 18px; }');
   const second = await cssBuild(project, [plugin]);
-  const dictionaryName = `snapshots/style.${createHash('sha256').update(snapshot).digest('hex')}.dat`;
+  const dictionaryName = `dictionaries/styles.v1.${createHash('sha256').update(snapshot).digest('hex')}.dat`;
   const firstCss = [...first.assets.keys()].find((name) => name.endsWith('.css'));
   const secondCss = [...second.assets.keys()].find((name) => name.endsWith('.css'));
   assert.notEqual(firstCss, secondCss);
@@ -199,6 +199,29 @@ test('production: a frozen source is used byte-for-byte and reused after the CSS
   }
   assertDcb(first.assets, firstCss, dictionaryName);
   assertDcb(second.assets, secondCss, dictionaryName);
+});
+
+test('production: source stems name dictionaries, sharing identical bytes and separating different hashes', async (t) => {
+  const shared = Buffer.from('.shared { color: red; }');
+  const different = Buffer.from('.different { color: blue; }');
+  const sources = ['one/rayban-styles.css', 'two/rayban-styles.dat', 'three/rayban-styles.dat'];
+  const project = fixture(t, { [sources[0]]: shared, [sources[1]]: shared, [sources[2]]: different });
+  const content = Buffer.from('.current { display: grid; }');
+  const result = await project.build([
+    new EmitAssetsPlugin({ 'first.css': content, 'second.css': content, 'third.css': content }),
+    ...['first.css', 'second.css', 'third.css'].map((name, index) => new CompressionDictionaryPlugin({
+      test: name,
+      dictionarySource: index === 1 ? path.join(project.directory, sources[index]) : sources[index],
+    })),
+  ]);
+  const sharedName = `dictionaries/rayban-styles.${createHash('sha256').update(shared).digest('hex')}.dat`;
+  const differentName = `dictionaries/rayban-styles.${createHash('sha256').update(different).digest('hex')}.dat`;
+  assert.deepEqual(dictionaryAssets(result.assets).sort(), [sharedName, differentName].sort());
+  assert.deepEqual(result.assets.get(sharedName), shared);
+  assert.deepEqual(result.assets.get(differentName), different);
+  assertDcb(result.assets, 'first.css', sharedName);
+  assertDcb(result.assets, 'second.css', sharedName);
+  assertDcb(result.assets, 'third.css', differentName);
 });
 
 test('production: identical dictionaries can be shared and stateful regex selectors match every asset', async (t) => {
@@ -242,13 +265,24 @@ test('production: overlapping instances and conflicting output names fail the bu
       new CompressionDictionaryPlugin({ test: 'a.css' }),
     ]));
   });
-  await t.test('distinct dictionary bytes cannot share a filename', async (t) => {
+  await t.test('an existing asset cannot be overwritten by a generated dictionary', async (t) => {
     const project = fixture(t);
+    const content = Buffer.from('.a { color: red; }');
+    const dictionaryName = `dictionaries/${createHash('sha256').update(content).digest('hex')}.dat`;
     await assert.rejects(project.build([
-      new EmitAssetsPlugin({ 'a.css': '.a { color: red; }', 'b.css': '.b { color: blue; }' }),
-      new CompressionDictionaryPlugin({ test: 'a.css', dictionaryFilename: 'shared.dat' }),
-      new CompressionDictionaryPlugin({ test: 'b.css', dictionaryFilename: 'shared.dat' }),
-    ]));
+      new EmitAssetsPlugin({ 'a.css': content, [dictionaryName]: 'already owned by another plugin' }),
+      new CompressionDictionaryPlugin({ test: 'a.css' }),
+    ]), /output collision/);
+  });
+  await t.test('a custom DCB path cannot collide with its generated dictionary', async (t) => {
+    const snapshot = Buffer.from('.snapshot { color: blue; }');
+    const project = fixture(t, { 'ready/app.css': '.card { color: red; }', 'snapshots/styles.dat': snapshot });
+    const dictionaryName = `dictionaries/styles.${createHash('sha256').update(snapshot).digest('hex')}.dat`;
+    await assert.rejects(project.build([
+      new CompressionDictionaryPlugin({
+        input: 'ready/app.css', dictionarySource: 'snapshots/styles.dat', dcbFilename: dictionaryName,
+      }),
+    ], { entry: {} }), /output collision/);
   });
   await t.test('an existing DCB asset is never overwritten', async (t) => {
     const project = fixture(t);
@@ -296,10 +330,16 @@ test('production: validates the asset selector and compression quality', () => {
   }
 });
 
-test('production: rejects dictionary filenames outside the output directory or with unsupported placeholders', () => {
-  for (const dictionaryFilename of ['', '../outside.dat', '/absolute.dat', 'C:/absolute.dat',
-    'nested/../outside.dat', 'nested\\dictionary.dat', 'dictionary.[name].dat']) {
-    assert.throws(() => new CompressionDictionaryPlugin({ test: 'a.css', dictionaryFilename }));
+test('production: removed dictionaryFilename options explain how to migrate to dictionarySource', () => {
+  for (const dictionaryFilename of ['dictionaries/[hash].dat', 'fixed.dat', '../outside.dat', '']) {
+    assert.throws(
+      () => new CompressionDictionaryPlugin({ test: 'a.css', dictionaryFilename }),
+      /dictionaryFilename has been removed.*dictionarySource/,
+    );
+    assert.throws(
+      () => automaticPlugin({ dictionaryFilename }),
+      /dictionaryFilename has been removed.*dictionarySource/,
+    );
   }
 });
 
@@ -332,16 +372,15 @@ test('production: direct inputs support a custom DCB path and reload the input a
   const plugin = new CompressionDictionaryPlugin({
     input: inputPath,
     dcbFilename: 'dist/css/app.css.dcb',
-    dictionarySource: 'snapshots/previous.css',
-    dictionaryFilename: 'dictionaries/frozen.[hash].dat',
+    dictionarySource: snapshotPath,
   });
   const first = await project.build([plugin], { entry: {} });
   project.write('ready/app.css', secondInput);
   const second = await project.build([plugin], { entry: {} });
   project.write('snapshots/previous.css', secondSnapshot);
   const third = await project.build([plugin], { entry: {} });
-  const firstDictionary = `dictionaries/frozen.${createHash('sha256').update(firstSnapshot).digest('hex')}.dat`;
-  const secondDictionary = `dictionaries/frozen.${createHash('sha256').update(secondSnapshot).digest('hex')}.dat`;
+  const firstDictionary = `dictionaries/previous.${createHash('sha256').update(firstSnapshot).digest('hex')}.dat`;
+  const secondDictionary = `dictionaries/previous.${createHash('sha256').update(secondSnapshot).digest('hex')}.dat`;
   assert.notDeepEqual(first.assets.get('dist/css/app.css.dcb'), second.assets.get('dist/css/app.css.dcb'));
   for (const [result, dictionaryName, snapshot, input] of [
     [first, firstDictionary, firstSnapshot, firstInput],
@@ -400,14 +439,14 @@ test('production: direct-file mode rejects missing input and output paths that o
     ], { entry: {} }));
     assert.deepEqual(fs.readFileSync(path.join(project.directory, 'build/app.css')), original);
   });
-  await t.test('dictionary output cannot overwrite the frozen snapshot', async (t) => {
+  await t.test('a custom DCB path cannot overwrite the frozen snapshot', async (t) => {
     const snapshot = Buffer.from('.previous { color: green; }');
     const project = fixture(t, { 'ready/app.css': '.card { color: red; }', 'build/snapshot.dat': snapshot });
     await assert.rejects(project.build([
       new CompressionDictionaryPlugin({
         input: 'ready/app.css',
         dictionarySource: 'build/snapshot.dat',
-        dictionaryFilename: 'snapshot.dat',
+        dcbFilename: 'snapshot.dat',
       }),
     ], { entry: {} }));
     assert.deepEqual(fs.readFileSync(path.join(project.directory, 'build/snapshot.dat')), snapshot);
@@ -436,7 +475,7 @@ test('production: one sorted manifest aggregates mixed instances, deduplicates s
   const project = fixture(t, {
     'ready/current.css': current,
     'ready/shared.css': shared,
-    'snapshots/previous.css': oldSnapshot,
+    'snapshots/a-frozen.css': oldSnapshot,
   });
   const outputPath = path.join(project.directory, 'build');
   const compiler = webpack({
@@ -449,13 +488,12 @@ test('production: one sorted manifest aggregates mixed instances, deduplicates s
     optimization: { minimize: false },
     plugins: [
       new EmitAssetsPlugin({ 'generated.css': shared }),
-      new CompressionDictionaryPlugin({ test: 'generated.css', dictionaryFilename: 'dictionaries/z-shared.dat' }),
+      new CompressionDictionaryPlugin({ test: 'generated.css' }),
       new CompressionDictionaryPlugin({
         input: 'ready/current.css',
-        dictionarySource: 'snapshots/previous.css',
-        dictionaryFilename: 'dictionaries/a-frozen.[hash].dat',
+        dictionarySource: 'snapshots/a-frozen.css',
       }),
-      new CompressionDictionaryPlugin({ input: 'ready/shared.css', dictionaryFilename: 'dictionaries/z-shared.dat' }),
+      new CompressionDictionaryPlugin({ input: 'ready/shared.css' }),
     ],
   });
   const build = async () => {
@@ -469,16 +507,17 @@ test('production: one sorted manifest aggregates mixed instances, deduplicates s
   };
   try {
     const first = await build();
-    project.write('snapshots/previous.css', newSnapshot);
+    project.write('snapshots/a-frozen.css', newSnapshot);
     const second = await build();
     const firstName = `dictionaries/a-frozen.${createHash('sha256').update(oldSnapshot).digest('hex')}.dat`;
     const secondName = `dictionaries/a-frozen.${createHash('sha256').update(newSnapshot).digest('hex')}.dat`;
+    const sharedName = `dictionaries/${createHash('sha256').update(shared).digest('hex')}.dat`;
     for (const [assets, frozenName] of [[first, firstName], [second, secondName]]) {
       const manifest = assertManifest(assets);
-      assert.deepEqual(Object.keys(manifest.dictionaries), [frozenName, 'dictionaries/z-shared.dat']);
+      assert.deepEqual(Object.keys(manifest.dictionaries), [frozenName, sharedName].sort());
       assert.equal([...assets.keys()].filter((name) => name.endsWith('.json')).length, 1);
-      assertDcb(assets, 'generated.css', 'dictionaries/z-shared.dat');
-      assertDcb(assets, 'shared.css', 'dictionaries/z-shared.dat', shared);
+      assertDcb(assets, 'generated.css', sharedName);
+      assertDcb(assets, 'shared.css', sharedName, shared);
       assertDcb(assets, 'current.css', frozenName, current);
     }
     assert.ok(!second.has(firstName), 'The old snapshot must not remain in a later compilation');
@@ -494,13 +533,6 @@ test('production: manifest path collisions fail instead of overwriting other out
     await assert.rejects(project.build([
       new EmitAssetsPlugin({ 'app.css': '.card { color: red; }', [MANIFEST_NAME]: '{"existing":true}' }),
       new CompressionDictionaryPlugin({ test: 'app.css' }),
-    ]));
-  });
-  await t.test('a dictionary cannot use the manifest filename', async (t) => {
-    const project = fixture(t);
-    await assert.rejects(project.build([
-      new EmitAssetsPlugin({ 'app.css': '.card { color: red; }' }),
-      new CompressionDictionaryPlugin({ test: 'app.css', dictionaryFilename: MANIFEST_NAME }),
     ]));
   });
   await t.test('a DCB cannot use the manifest filename', async (t) => {
@@ -548,4 +580,360 @@ test('production: the aggregated manifest cannot overwrite any instance input or
     ], { entry: {} }));
     assert.deepEqual(fs.readFileSync(path.join(project.directory, snapshotPath)), snapshot);
   });
+});
+
+function sampleBytes(seed, length = 8192) {
+  let state = seed;
+  return Buffer.from(Array.from({ length }, () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state >>> 24;
+  }));
+}
+
+function automaticPlugin(options = {}) {
+  return new CompressionDictionaryPlugin({
+    input: 'ready/app.css',
+    dictionarySource: '.dictionary-cache/styles.dat',
+    autoUpdate: {},
+    ...options,
+  });
+}
+
+test('production: automatic dictionaries survive clean output and a fresh build process', async (t) => {
+  const original = sampleBytes(1);
+  const project = fixture(t, { 'ready/app.css': original });
+  const first = await project.build([automaticPlugin()], { entry: {} });
+  const cachePath = path.join(project.directory, '.dictionary-cache/styles.dat');
+  const dictionaryName = dictionaryAssets(first.assets)[0];
+  assert.equal(dictionaryName, `dictionaries/styles.${createHash('sha256').update(original).digest('hex')}.dat`);
+  assert.deepEqual(fs.readFileSync(cachePath), original);
+  assert.equal(first.fileDependencies.has(cachePath), false, 'Automatic dictionaries must not trigger watch rebuilds');
+  assertDcb(first.assets, 'app.css', dictionaryName, original);
+
+  // The next process must reuse the disk snapshot even though the input changed.
+  const changed = Buffer.from(original);
+  changed[100] ^= 0xff;
+  project.write('ready/app.css', changed);
+  project.write('build/stale.txt', 'output.clean must remove this');
+  fs.utimesSync(cachePath, 1, 1);
+  const oldMtime = fs.statSync(cachePath).mtimeMs;
+  const script = `
+    const [directory, webpackPath, pluginPath] = process.argv.slice(1);
+    const webpack = require(webpackPath);
+    const Plugin = require(pluginPath);
+    const compiler = webpack({
+      mode: 'production', context: directory, entry: {}, cache: false,
+      output: { path: require('node:path').join(directory, 'build'), clean: true },
+      plugins: [new Plugin({
+        input: 'ready/app.css',
+        dictionarySource: '.dictionary-cache/styles.dat',
+        autoUpdate: {},
+      })],
+    });
+    compiler.run((error, stats) => compiler.close((closeError) => {
+      if (error || closeError || stats.hasErrors()) {
+        process.stderr.write(String(error || closeError || stats.toString({ all: false, errors: true })));
+        process.exitCode = 1;
+      }
+    }));
+  `;
+  execFileSync(process.execPath, [
+    '-e', script, project.directory, require.resolve('webpack'),
+    require.resolve('../webpack/production/CompressionDictionaryPlugin.cjs'),
+  ], { timeout: 30000, windowsHide: true });
+  const outputPath = path.join(project.directory, 'build');
+  const assets = new Map([dictionaryName, 'app.css.dcb', MANIFEST_NAME].map((name) => [
+    name, fs.readFileSync(path.join(outputPath, name)),
+  ]));
+  assert.equal(fs.existsSync(path.join(outputPath, 'stale.txt')), false);
+  assert.deepEqual(fs.readFileSync(cachePath), original);
+  assert.equal(fs.statSync(cachePath).mtimeMs, oldMtime, 'Reusing a dictionary must not rewrite its cache');
+  assertDcb(assets, 'app.css', dictionaryName, changed);
+});
+
+test('production: existing dictionarySource is reused above 90% and overwritten below it only with autoUpdate', async (t) => {
+  const snapshot = sampleBytes(2);
+  const similar = Buffer.from(snapshot);
+  similar[100] ^= 0xff;
+  const unrelated = sampleBytes(3);
+  const project = fixture(t, { 'ready/app.css': similar, '.dictionary-cache/styles.dat': snapshot });
+  const first = await project.build([automaticPlugin()], { entry: {} });
+  const firstName = dictionaryAssets(first.assets)[0];
+  const cachePath = path.join(project.directory, '.dictionary-cache/styles.dat');
+  assert.equal(firstName, `dictionaries/styles.${createHash('sha256').update(snapshot).digest('hex')}.dat`);
+  assert.deepEqual(first.assets.get(firstName), snapshot);
+  assert.ok(1 - first.assets.get('app.css.dcb').length / similar.length >= 0.9);
+  assert.deepEqual(fs.readFileSync(cachePath), snapshot);
+  assertDcb(first.assets, 'app.css', firstName, similar);
+
+  const outdatedDcbSize = 36 + brotli.compress(unrelated, { quality: 11, customDictionary: snapshot }).length;
+  assert.ok(1 - outdatedDcbSize / unrelated.length < 0.9, 'Fixture must cross the default rotation threshold');
+  project.write('ready/app.css', unrelated);
+  const fixed = await project.build([automaticPlugin({ autoUpdate: undefined })], { entry: {} });
+  assert.deepEqual(dictionaryAssets(fixed.assets), [firstName]);
+  assert.deepEqual(fs.readFileSync(cachePath), snapshot, 'A fixed snapshot must never be overwritten');
+  assert.ok(fixed.fileDependencies.has(cachePath), 'Fixed snapshots remain watched inputs');
+  assertDcb(fixed.assets, 'app.css', firstName, unrelated);
+
+  const rotated = await project.build([automaticPlugin()], { entry: {} });
+  const rotatedName = dictionaryAssets(rotated.assets)[0];
+  assert.equal(rotatedName, `dictionaries/styles.${createHash('sha256').update(unrelated).digest('hex')}.dat`);
+  assert.notEqual(rotatedName, firstName);
+  assert.deepEqual(rotated.assets.get(rotatedName), unrelated);
+  assert.deepEqual(fs.readFileSync(cachePath), unrelated);
+  assert.equal(rotated.fileDependencies.has(cachePath), false);
+  assertDcb(rotated.assets, 'app.css', rotatedName, unrelated);
+
+  const reused = await project.build([automaticPlugin()], { entry: {} });
+  assert.deepEqual(dictionaryAssets(reused.assets), [rotatedName]);
+  assertDcb(reused.assets, 'app.css', rotatedName, unrelated);
+});
+
+test('production: automatic threshold includes the 36-byte DCB header and reuses at equality', async (t) => {
+  const seed = sampleBytes(4);
+  const changed = Buffer.from(seed);
+  changed[0] ^= 0xff;
+  const compressedSize = brotli.compress(changed, { quality: 11, customDictionary: seed }).length;
+  const exactSavings = 1 - (compressedSize + 36) / changed.length;
+  const payloadOnlySavings = 1 - compressedSize / changed.length;
+  const project = fixture(t, {
+    'ready/app.css': changed, '.dictionary-cache/equal.dat': seed, '.dictionary-cache/header.dat': seed,
+  });
+  const buildAt = (minSavings, dictionarySource) => project.build([automaticPlugin({
+    dictionarySource, autoUpdate: { minSavings },
+  })], { entry: {} });
+  const equal = await buildAt(exactSavings, '.dictionary-cache/equal.dat');
+  const equalName = dictionaryAssets(equal.assets)[0];
+  assert.deepEqual(equal.assets.get(equalName), seed, 'Savings equal to the threshold must reuse the seed');
+  assertDcb(equal.assets, 'app.css', equalName, changed);
+  const between = await buildAt((exactSavings + payloadOnlySavings) / 2, '.dictionary-cache/header.dat');
+  const betweenName = dictionaryAssets(between.assets)[0];
+  assert.deepEqual(between.assets.get(betweenName), changed, 'Counting the DCB header must trigger rotation');
+  assertDcb(between.assets, 'app.css', betweenName, changed);
+});
+
+test('production: automatic dictionary cache remains stable when CSS contenthash changes', async (t) => {
+  const rules = Array.from({ length: 150 }, (_, index) => `.card${index} { color: red; padding: ${index}px; }`).join('\n');
+  const project = fixture(t, { 'entry.js': 'import "./styles.css";', 'styles.css': rules });
+  const makePlugin = () => new CompressionDictionaryPlugin({
+    test: /\.css$/, dictionarySource: '.dictionary-cache/styles.dat', autoUpdate: {},
+  });
+  const first = await cssBuild(project, [makePlugin()]);
+  project.write('styles.css', rules.replace('color: red', 'color: blue'));
+  const second = await cssBuild(project, [makePlugin()]);
+  const firstCss = [...first.assets.keys()].find((name) => name.endsWith('.css'));
+  const secondCss = [...second.assets.keys()].find((name) => name.endsWith('.css'));
+  assert.notEqual(firstCss, secondCss);
+  assert.deepEqual(dictionaryAssets(second.assets), dictionaryAssets(first.assets));
+  assertDcb(second.assets, secondCss, dictionaryAssets(first.assets)[0]);
+});
+
+test('production: failed builds neither create nor rotate automatic dictionary caches', async (t) => {
+  const original = sampleBytes(5);
+  const replacement = sampleBytes(6);
+  const failLate = {
+    apply(compiler) {
+      compiler.hooks.thisCompilation.tap('FailAfterDictionaryAssets', (compilation) => {
+        compilation.hooks.processAssets.tap({
+          name: 'FailAfterDictionaryAssets', stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_REPORT + 1,
+        }, () => { compilation.errors.push(new Error('Deliberate late compilation failure')); });
+      });
+    },
+  };
+  const project = fixture(t, { 'ready/app.css': original });
+  const cachePath = path.join(project.directory, '.dictionary-cache/styles.dat');
+  await assert.rejects(project.build([automaticPlugin(), failLate], { entry: {} }), /Deliberate late compilation failure/);
+  assert.equal(fs.existsSync(cachePath), false, 'A failed first build must not publish its cache');
+  await project.build([automaticPlugin()], { entry: {} });
+  project.write('ready/app.css', replacement);
+  await assert.rejects(project.build([automaticPlugin(), failLate], { entry: {} }), /Deliberate late compilation failure/);
+  assert.deepEqual(fs.readFileSync(cachePath), original, 'A failed rotation must retain the last successful dictionary');
+});
+
+test('production: independent instances persist and rotate their own automatic dictionaries', async (t) => {
+  const first = sampleBytes(7);
+  const second = sampleBytes(8);
+  const replacement = sampleBytes(9);
+  const project = fixture(t, { 'ready/first.css': first, 'ready/second.css': second });
+  const makePlugins = () => ['first', 'second'].map((name) => new CompressionDictionaryPlugin({
+    input: `ready/${name}.css`, dictionarySource: `.dictionary-cache/${name}.dat`, autoUpdate: {},
+  }));
+  await project.build(makePlugins(), { entry: {} });
+  project.write('ready/first.css', replacement);
+  const result = await project.build(makePlugins(), { entry: {} });
+  assert.equal(dictionaryAssets(result.assets).length, 2);
+  for (const [name, bytes] of [['first', replacement], ['second', second]]) {
+    const dictionaryName = `dictionaries/${name}.${createHash('sha256').update(bytes).digest('hex')}.dat`;
+    assert.deepEqual(fs.readFileSync(path.join(project.directory, `.dictionary-cache/${name}.dat`)), bytes);
+    assertDcb(result.assets, `${name}.css`, dictionaryName, bytes);
+  }
+});
+
+test('production: empty inputs reuse an automatic snapshot and tiny unchanged inputs do not rewrite it', async (t) => {
+  await t.test('empty input without a dictionary fails without creating the cache', async (t) => {
+    const project = fixture(t, { 'ready/app.css': '' });
+    await assert.rejects(project.build([automaticPlugin()], { entry: {} }));
+    assert.equal(fs.existsSync(path.join(project.directory, '.dictionary-cache/styles.dat')), false);
+  });
+  await t.test('empty input with a cached dictionary can round-trip', async (t) => {
+    const snapshot = sampleBytes(10);
+    const project = fixture(t, { 'ready/app.css': '', '.dictionary-cache/styles.dat': snapshot });
+    const result = await project.build([automaticPlugin()], { entry: {} });
+    assert.deepEqual(result.assets.get(dictionaryAssets(result.assets)[0]), snapshot);
+    assertDcb(result.assets, 'app.css', dictionaryAssets(result.assets)[0], Buffer.alloc(0));
+  });
+  await t.test('an unattainable threshold does not rewrite identical bytes', async (t) => {
+    const tiny = Buffer.from('a');
+    const project = fixture(t, { 'ready/app.css': tiny, '.dictionary-cache/styles.dat': tiny });
+    const cachePath = path.join(project.directory, '.dictionary-cache/styles.dat');
+    fs.utimesSync(cachePath, 1, 1);
+    const oldMtime = fs.statSync(cachePath).mtimeMs;
+    const result = await project.build([automaticPlugin()], { entry: {} });
+    assert.equal(fs.statSync(cachePath).mtimeMs, oldMtime);
+    assert.ok(1 - result.assets.get('app.css.dcb').length / tiny.length < 0.9);
+    assertDcb(result.assets, 'app.css', dictionaryAssets(result.assets)[0], tiny);
+  });
+});
+
+test('production: automatic dictionary options require a source and a valid threshold', () => {
+  for (const autoUpdate of [true, false, null, 'cache.dat', [],
+    { minSavings: -0.01 }, { minSavings: 1.01 }, { minSavings: NaN },
+    { minSavings: Infinity }, { minSavings: '0.9' }]) {
+    assert.throws(() => automaticPlugin({ autoUpdate }));
+  }
+  for (const dictionarySource of [undefined, '', 123]) {
+    assert.throws(() => automaticPlugin({ dictionarySource }));
+  }
+  assert.throws(() => automaticPlugin({ autoUpdate: { cachePath: '.cache/obsolete.dat' } }), /cachePath/);
+  assert.doesNotThrow(() => automaticPlugin({ autoUpdate: {} }));
+  for (const minSavings of [0, 1]) {
+    assert.doesNotThrow(() => automaticPlugin({ autoUpdate: { minSavings } }));
+  }
+});
+
+test('production: automatic dictionarySource cannot overlap output or input files', async (t) => {
+  const original = sampleBytes(11);
+  for (const dictionarySource of ['build', 'build/dictionaries/latest.dat', 'ready/app.css']) {
+    await t.test(dictionarySource, async (t) => {
+      const project = fixture(t, { 'ready/app.css': original });
+      await assert.rejects(project.build([automaticPlugin({ dictionarySource })], { entry: {} }));
+      assert.deepEqual(fs.readFileSync(path.join(project.directory, 'ready/app.css')), original);
+    });
+  }
+  await t.test('Windows path collision checks ignore casing', { skip: process.platform !== 'win32' }, async (t) => {
+    const project = fixture(t, { 'ready/app.css': original });
+    await assert.rejects(project.build([automaticPlugin({
+      dictionarySource: 'READY/APP.CSS',
+    })], { entry: {} }));
+    assert.deepEqual(fs.readFileSync(path.join(project.directory, 'ready/app.css')), original);
+  });
+});
+
+test('production: writable dictionary sources cannot be shared with other instances in either registration order', async (t) => {
+  const snapshot = sampleBytes(17);
+  const current = sampleBytes(18);
+  const dictionarySource = 'snapshots/shared.dat';
+  for (const kind of ['input', 'fixed dictionary', 'automatic dictionary']) {
+    for (const autoFirst of [true, false]) {
+      await t.test(`${kind}, automatic instance ${autoFirst ? 'first' : 'last'}`, async (t) => {
+        const project = fixture(t, {
+          'ready/app.css': current, 'ready/other.css': current, [dictionarySource]: snapshot,
+        });
+        const automatic = automaticPlugin({ dictionarySource });
+        const other = kind === 'input'
+          ? new CompressionDictionaryPlugin({ input: dictionarySource, dcbFilename: 'other.dcb' })
+          : new CompressionDictionaryPlugin({
+            input: 'ready/other.css', dictionarySource,
+            ...(kind === 'automatic dictionary' ? { autoUpdate: {} } : {}),
+          });
+        await assert.rejects(project.build(autoFirst ? [automatic, other] : [other, automatic], { entry: {} }));
+        assert.deepEqual(fs.readFileSync(path.join(project.directory, dictionarySource)), snapshot);
+        assert.deepEqual(fs.readFileSync(path.join(project.directory, 'ready/app.css')), current);
+        assert.deepEqual(fs.readFileSync(path.join(project.directory, 'ready/other.css')), current);
+      });
+    }
+  }
+});
+
+test('production: multiple fixed instances may share a read-only dictionarySource', async (t) => {
+  const snapshot = sampleBytes(19);
+  const first = sampleBytes(20);
+  const second = sampleBytes(21);
+  const dictionarySource = 'snapshots/shared.dat';
+  const project = fixture(t, {
+    'ready/first.css': first, 'ready/second.css': second, [dictionarySource]: snapshot,
+  });
+  const snapshotPath = path.join(project.directory, dictionarySource);
+  fs.utimesSync(snapshotPath, 1, 1);
+  const oldMtime = fs.statSync(snapshotPath).mtimeMs;
+  const result = await project.build(['first', 'second'].map((name) => new CompressionDictionaryPlugin({
+    input: `ready/${name}.css`, dictionarySource,
+  })), { entry: {} });
+  const names = dictionaryAssets(result.assets);
+  assert.equal(names.length, 1);
+  assert.deepEqual(result.assets.get(names[0]), snapshot);
+  assert.deepEqual(fs.readFileSync(snapshotPath), snapshot);
+  assert.equal(fs.statSync(snapshotPath).mtimeMs, oldMtime);
+  assert.ok(result.fileDependencies.has(snapshotPath));
+  assertDcb(result.assets, 'first.css', names[0], first);
+  assertDcb(result.assets, 'second.css', names[0], second);
+});
+
+test('production: automatic dictionary instances require exactly one matching asset', async (t) => {
+  const project = fixture(t);
+  await assert.rejects(project.build([
+    new EmitAssetsPlugin({ 'first.css': sampleBytes(12), 'second.css': sampleBytes(13) }),
+    new CompressionDictionaryPlugin({
+      test: /\.css$/, dictionarySource: '.dictionary-cache/styles.dat', autoUpdate: {},
+    }),
+  ]));
+  assert.equal(fs.existsSync(path.join(project.directory, '.dictionary-cache/styles.dat')), false);
+});
+
+test('production: an additional pass that fails cannot persist the first pass dictionary', async (t) => {
+  const original = sampleBytes(14);
+  const replacement = sampleBytes(15);
+  const project = fixture(t, { 'ready/app.css': replacement, '.dictionary-cache/styles.dat': original });
+  let passes = 0;
+  let emissions = 0;
+  const additionalPass = {
+    apply(compiler) {
+      compiler.hooks.afterEmit.tap('CountIntermediateEmissions', () => { emissions += 1; });
+      compiler.hooks.thisCompilation.tap('FailAdditionalPass', (compilation) => {
+        const pass = ++passes;
+        compilation.hooks.needAdditionalPass.tap('FailAdditionalPass', () => pass === 1);
+        compilation.hooks.processAssets.tap({
+          name: 'FailAdditionalPass', stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_REPORT + 1,
+        }, () => {
+          if (pass === 2) compilation.errors.push(new Error('Deliberate additional pass failure'));
+        });
+      });
+    },
+  };
+  await assert.rejects(project.build([automaticPlugin(), additionalPass], { entry: {} }), /Deliberate additional pass failure/);
+  assert.equal(passes, 2);
+  assert.ok(emissions >= 1, 'The first pass must actually emit before requesting another pass');
+  assert.deepEqual(fs.readFileSync(path.join(project.directory, '.dictionary-cache/styles.dat')), original);
+});
+
+test('production: a successful compilation with emission disabled does not persist its dictionary', async (t) => {
+  const project = fixture(t, { 'ready/app.css': sampleBytes(16) });
+  const compiler = webpack({
+    mode: 'production', context: project.directory, entry: {}, cache: false,
+    output: { path: path.join(project.directory, 'build'), clean: true },
+    plugins: [automaticPlugin(), {
+      apply(compiler) { compiler.hooks.shouldEmit.tap('SkipDictionaryEmission', () => false); },
+    }],
+  });
+  try {
+    const stats = await new Promise((resolve, reject) => {
+      compiler.run((error, result) => error ? reject(error) : resolve(result));
+    });
+    assert.equal(stats.hasErrors(), false, stats.toString({ all: false, errors: true }));
+    assert.ok(stats.compilation.getAsset('app.css.dcb'));
+    assert.equal(fs.existsSync(path.join(project.directory, 'build/app.css.dcb')), false);
+    assert.equal(fs.existsSync(path.join(project.directory, '.dictionary-cache/styles.dat')), false);
+  } finally {
+    await new Promise((resolve, reject) => compiler.close((error) => error ? reject(error) : resolve()));
+  }
 });

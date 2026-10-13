@@ -4,6 +4,10 @@ Esempio funzionante basato su **CBP-Performance _ Use-As-Dictionary-080926-17393
 
 Per integrare la generazione di **dizionari `.dat` e risorse `.dcb`** nella tua applicazione, usa il [plugin per la produzione](webpack/production/README.md). Accetta un file già pronto tramite `input` oppure gli asset della build tramite `test`, supporta più istanze e genera `dist/compression-dictionary-manifest.json` con gli hash Base64 dei dizionari per il deploy. Lascia gli header al server e non modifica l'HTML. Il plugin della demo resta dedicato alla pagina Vue e alle sue statistiche.
 
+Il plugin di produzione supporta anche l'[aggiornamento automatico del dizionario](webpack/production/README.md#aggiornamento-automatico-sotto-il-90): con `autoUpdate: { minSavings: 0.9 }` riutilizza il file `dictionarySource` finché il DCB risparmia almeno il 90% rispetto al CSS minificato non compresso, poi aggiorna quello stesso file. L'esempio Ray-Ban usa `.dictionary-cache/rayban-styles.dat`, da conservare tra le build e ripristinare in CI; se manca, il plugin lo crea dal CSS corrente.
+
+Il nome pubblicato deriva automaticamente da `dictionarySource` e dall'hash del dizionario: nell'esempio è `dictionaries/rayban-styles.<sha256>.dat`, relativo alla directory di output della build.
+
 ## Avvio
 
 Serve Node.js **22.12 o successivo**; verificato con Node 24. Non sono necessari Python, OpenSSL o un compilatore C per la build.
