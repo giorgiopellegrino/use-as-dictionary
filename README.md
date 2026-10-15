@@ -67,11 +67,11 @@ Il dizionario viene pubblicato con `Use-As-Dictionary: match="/dist/styles.*.css
 
 ## Misure e prova nel browser
 
-La pagina legge `/api/demo-stats`: l'endpoint espone le dimensioni del CSS, del DCB della build e delle rappresentazioni Brotli generate dal server. Non governa discovery o negoziazione; il link **Apri il manifest di produzione** mostra il manifest effettivo.
+La pagina legge `/api/demo-stats`: l'endpoint espone le dimensioni del CSS, del DCB della build e delle rappresentazioni Brotli generate dal server. Non governa discovery o negoziazione; il link **Open the production manifest** mostra il manifest effettivo.
 
 Il primo dizionario contiene l'intero CSS corrente. Un DCB molto piccolo non elimina quel download iniziale: la pagina mostra anche **dizionario in Brotli + CSS in DCB**. Il risparmio va valutato quando il dizionario è riutilizzato; le misure escludono le intestazioni e l'eventuale primo CSS ricevuto in fallback.
 
-In DevTools → Network lascia **Disable cache disattivato** e premi **Prova il trasferimento**. Sulla richiesta CSS con `?probe=...`, verifica `Accept-Encoding: ... dcb ...`, `Available-Dictionary: :<sha256Base64>:` e la risposta `Content-Encoding: dcb`. Il browser negozia e decodifica nativamente. Se non ha ancora registrato il dizionario, ripeti la prova.
+In DevTools → Network lascia **Disable cache disattivato** e premi **Test the transfer**. Sulla richiesta CSS con `?probe=...`, verifica `Accept-Encoding: ... dcb ...`, `Available-Dictionary: :<sha256Base64>:` e la risposta `Content-Encoding: dcb`. Il browser negozia e decodifica nativamente. Se non ha ancora registrato il dizionario, ripeti la prova.
 
 ## Comandi
 

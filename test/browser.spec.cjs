@@ -79,9 +79,9 @@ test('Il browser negozia DCB, decodifica il CSS e applica il foglio di stile', a
     expect(requestHeaders['dictionary-id']).toBe(JSON.stringify(dictionary.id));
     expect(requestHeaders['accept-encoding'].split(',').map((value) => value.trim())).toContain('dcb');
 
-    await page.getByRole('button', { name: 'Prova il trasferimento', exact: true }).click();
+    await page.getByRole('button', { name: 'Test the transfer', exact: true }).click();
     await expect(page.getByTestId('transfer-encoding')).toHaveText('dcb');
-    await expect(page.locator('.probe-status')).toHaveText('DCB ricevuto');
+    await expect(page.locator('.probe-status')).toHaveText('DCB received');
 
     // Rimuove il CSS iniziale: il controllo successivo deve dipendere dalla risposta DCB.
     await page.evaluate(() => {

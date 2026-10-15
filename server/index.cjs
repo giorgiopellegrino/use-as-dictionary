@@ -13,7 +13,7 @@ const CSS_VARY = 'Accept-Encoding, Available-Dictionary';
 function createDemoServer({ rootDir = DEFAULT_ROOT, tls, logger = console } = {}) {
   // Fail immediately with an actionable message if the project hasn't been built.
   if (!fs.existsSync(path.join(rootDir, MANIFEST_NAME)) || !fs.existsSync(path.join(rootDir, 'index.html'))) {
-    throw new Error('Build assente: esegui npm run build prima di npm run serve.');
+    throw new Error('Build missing: run npm run build before npm run serve.');
   }
   const handler = async (req, res) => {
     const plain = (status, message, headers = {}) => {
@@ -22,7 +22,7 @@ function createDemoServer({ rootDir = DEFAULT_ROOT, tls, logger = console } = {}
     };
     try {
       if (req.method !== 'GET' && req.method !== 'HEAD') {
-        plain(405, 'Metodo non consentito', { Allow: 'GET, HEAD' });
+        plain(405, 'Method not allowed', { Allow: 'GET, HEAD' });
         return;
       }
       const pathname = new URL(req.url, 'http://localhost').pathname;
@@ -35,7 +35,7 @@ function createDemoServer({ rootDir = DEFAULT_ROOT, tls, logger = console } = {}
       const isMetrics = pathname === '/api/demo-stats';
       const isManifest = pathname === MANIFEST_URL;
       if (!css && !dictionary && !isHtml && !isManifest && !isMetrics && !script) {
-        plain(404, 'Risorsa non trovata');
+        plain(404, 'Resource not found');
         return;
       }
       const headers = {
@@ -50,7 +50,7 @@ function createDemoServer({ rootDir = DEFAULT_ROOT, tls, logger = console } = {}
       const supported = asset || isHtml ? [...(cssDictionary ? ['dcb'] : []), 'br', 'gzip'] : [];
       const encoding = selectEncoding(req.headers['accept-encoding'], dictionaryMatches, supported);
       if (!encoding) {
-        plain(406, 'Nessuna rappresentazione accettabile', { ...headers, 'Cache-Control': 'no-store' });
+        plain(406, 'No acceptable representation', { ...headers, 'Cache-Control': 'no-store' });
         return;
       }
       if (css) headers['Content-Type'] = 'text/css; charset=utf-8';
@@ -82,10 +82,10 @@ function createDemoServer({ rootDir = DEFAULT_ROOT, tls, logger = console } = {}
       res.end(req.method === 'HEAD' ? undefined : body);
       if (css) logger.info(`CSS ${encoding.padEnd(8)} ${body.length} B  ${pathname}`);
     } catch (error) {
-      if (error.code === 'ENOENT') plain(404, 'Risorsa non trovata; la build potrebbe essere in aggiornamento.');
+      if (error.code === 'ENOENT') plain(404, 'Resource not found; the build may be updating.');
       else {
         logger.error(error);
-        plain(500, 'Errore del server');
+        plain(500, 'Server error');
       }
     }
   };
@@ -95,7 +95,7 @@ function createDemoServer({ rootDir = DEFAULT_ROOT, tls, logger = console } = {}
 if (require.main === module) {
   try {
     if (Boolean(process.env.TLS_CERT) !== Boolean(process.env.TLS_KEY)) {
-      throw new Error('Specifica sia TLS_CERT sia TLS_KEY per avviare HTTPS.');
+      throw new Error('Specify both TLS_CERT and TLS_KEY to start HTTPS.');
     }
     const tls = process.env.TLS_CERT ? {
       cert: fs.readFileSync(process.env.TLS_CERT),

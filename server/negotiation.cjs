@@ -36,7 +36,7 @@ function encodeBody(body, encoding) {
   }
   if (encoding === 'gzip') return gzipSync(body, { level: 9 });
   if (encoding === 'identity') return body;
-  throw new Error(`Codifica HTTP non gestita: ${encoding}`);
+  throw new Error(`Unsupported HTTP encoding: ${encoding}`);
 }
 
 module.exports = { selectEncoding, encodeBody };

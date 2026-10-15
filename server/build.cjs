@@ -39,12 +39,12 @@ async function loadBuild(rootDir) {
   const manifestBytes = await fs.readFile(path.join(rootDir, MANIFEST_NAME));
   const manifest = JSON.parse(manifestBytes);
   if (!manifest.dictionaries || typeof manifest.dictionaries !== 'object' || Array.isArray(manifest.dictionaries)) {
-    throw new Error('Manifest di produzione privo di dictionaries.');
+    throw new Error('Production manifest is missing dictionaries.');
   }
   const dictionaries = (await Promise.all(Object.entries(manifest.dictionaries).map(async ([name, entry]) => {
     if (!/^dictionaries\/[^/\\\x00-\x1f?#:]+\.dat$/.test(name)
       || !entry || !/^[A-Za-z0-9+/]{43}=$/.test(entry.sha256Base64)) {
-      throw new Error(`Voce non valida nel manifest di produzione: ${name}`);
+      throw new Error(`Invalid entry in the production manifest: ${name}`);
     }
     const asset = await describeAsset(rootDir, name);
     if (!asset) return undefined;
@@ -99,7 +99,7 @@ function demoMetrics(build) {
 
 function renderHtml(template, dictionaries) {
   const links = dictionaries.map(({ url }) => `<link rel="compression-dictionary" href="${url}">`).join('');
-  if (!/<head(?:\s[^>]*)?>/i.test(template)) throw new Error('HTML della demo privo di head.');
+  if (!/<head(?:\s[^>]*)?>/i.test(template)) throw new Error('Demo HTML is missing a head element.');
   return template.replace(/<head(?:\s[^>]*)?>/i, (head) => `${head}${links}`);
 }
 
