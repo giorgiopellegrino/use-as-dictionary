@@ -5,9 +5,9 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CompressionDictionaryPlugin = require('./webpack/CompressionDictionaryPlugin.cjs');
-const CompressionDictionaryPluginProd = require('./webpack/production/CompressionDictionaryPlugin.cjs');
 
-const raybanCssInput = path.resolve(__dirname, 'src/styles.3772401f5d.css');
+const dictionarySource = path.resolve(__dirname, '.dictionary-cache/styles.dat');
+const cssMinimizerOptions = { preset: ['default', { discardComments: { all: true } }] };
 
 module.exports = {
   entry: './src/main.js',
@@ -25,9 +25,7 @@ module.exports = {
     ],
   },
   optimization: {
-    minimizer: ['...', new CssMinimizerPlugin({
-      minimizerOptions: { preset: ['default', { discardComments: { all: true } }] },
-    })],
+    minimizer: ['...', new CssMinimizerPlugin({ minimizerOptions: cssMinimizerOptions })],
   },
   plugins: [
     new VueLoaderPlugin(),
@@ -38,18 +36,10 @@ module.exports = {
     }),
     new MiniCssExtractPlugin({ filename: 'dist/styles.[contenthash:16].css' }),
     new HtmlWebpackPlugin({ template: 'public/index.html' }),
-    // new CompressionDictionaryPlugin({
-    //   dictionarySource: path.resolve(__dirname, 'dictionaries/styles.v1.css'),
-    //   match: '/dist/styles.*.css',
-    // }),
-    //Ray-Ban CSS example only to generate dictionary+css.dcb
-    new CompressionDictionaryPluginProd({
-      input: raybanCssInput,
-      dictionarySource: 'dictionaries/dictionary_styles.dat',
-      autoUpdate: {
-        minSavings: 0.9,
-      },
-      dcbFilename: `dist/${path.basename(raybanCssInput)}.dcb`,
+    new CompressionDictionaryPlugin({
+      test: /^dist\/styles\.[a-f0-9]+\.css$/,
+      dictionarySource,
+      autoUpdate: { minSavings: 0.9 },
     }),
   ],
 };

@@ -9,7 +9,7 @@ const webpack = require('webpack');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const brotli = require('brotli-wasm-custom-dictionary');
-const CompressionDictionaryPlugin = require('../webpack/production/CompressionDictionaryPlugin.cjs');
+const CompressionDictionaryPlugin = require('../webpack/CompressionDictionaryPlugin.cjs');
 const MANIFEST_NAME = 'dist/compression-dictionary-manifest.json';
 
 function fixture(t, files = {}) {
@@ -204,7 +204,7 @@ test('production: a frozen source is used byte-for-byte and reused after the CSS
 test('production: source stems name dictionaries, sharing identical bytes and separating different hashes', async (t) => {
   const shared = Buffer.from('.shared { color: red; }');
   const different = Buffer.from('.different { color: blue; }');
-  const sources = ['one/rayban-styles.css', 'two/rayban-styles.dat', 'three/rayban-styles.dat'];
+  const sources = ['one/shared-styles.css', 'two/shared-styles.dat', 'three/shared-styles.dat'];
   const project = fixture(t, { [sources[0]]: shared, [sources[1]]: shared, [sources[2]]: different });
   const content = Buffer.from('.current { display: grid; }');
   const result = await project.build([
@@ -214,8 +214,8 @@ test('production: source stems name dictionaries, sharing identical bytes and se
       dictionarySource: index === 1 ? path.join(project.directory, sources[index]) : sources[index],
     })),
   ]);
-  const sharedName = `dictionaries/rayban-styles.${createHash('sha256').update(shared).digest('hex')}.dat`;
-  const differentName = `dictionaries/rayban-styles.${createHash('sha256').update(different).digest('hex')}.dat`;
+  const sharedName = `dictionaries/shared-styles.${createHash('sha256').update(shared).digest('hex')}.dat`;
+  const differentName = `dictionaries/shared-styles.${createHash('sha256').update(different).digest('hex')}.dat`;
   assert.deepEqual(dictionaryAssets(result.assets).sort(), [sharedName, differentName].sort());
   assert.deepEqual(result.assets.get(sharedName), shared);
   assert.deepEqual(result.assets.get(differentName), different);
@@ -639,7 +639,7 @@ test('production: automatic dictionaries survive clean output and a fresh build 
   `;
   execFileSync(process.execPath, [
     '-e', script, project.directory, require.resolve('webpack'),
-    require.resolve('../webpack/production/CompressionDictionaryPlugin.cjs'),
+    require.resolve('../webpack/CompressionDictionaryPlugin.cjs'),
   ], { timeout: 30000, windowsHide: true });
   const outputPath = path.join(project.directory, 'build');
   const assets = new Map([dictionaryName, 'app.css.dcb', MANIFEST_NAME].map((name) => [

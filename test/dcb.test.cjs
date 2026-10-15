@@ -1,6 +1,7 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 const { createHash } = require('node:crypto');
@@ -9,23 +10,35 @@ const brotli = require('brotli-wasm-custom-dictionary');
 const { createDemoServer } = require('../server/index.cjs');
 
 const rootDir = path.resolve(__dirname, '../build');
-const manifest = JSON.parse(fs.readFileSync(path.join(rootDir, 'demo-manifest.json')));
-const dictionary = fs.readFileSync(path.join(rootDir, manifest.dictionary.url));
-const hash = createHash('sha256').update(dictionary).digest();
-const resource = manifest.resources[0];
-const css = fs.readFileSync(path.join(rootDir, resource.url));
-const server = createDemoServer({ rootDir, logger: { info() {}, error() {} } });
+const manifestUrl = '/dist/compression-dictionary-manifest.json';
+const productionManifest = JSON.parse(fs.readFileSync(path.join(rootDir, manifestUrl.slice(1)), 'utf8'));
+const logger = { info() {}, error() {} };
+const server = createDemoServer({ rootDir, logger });
+const magic = Buffer.from([0xff, 0x44, 0x43, 0x42]);
 let origin;
+let metrics;
+let dictionary;
+let hash;
+let resource;
+let css;
+
 before(async () => {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
+  const response = await request('/api/demo-stats');
+  assert.equal(response.status, 200);
+  metrics = JSON.parse(response.body);
+  resource = metrics.resources[0];
+  dictionary = fs.readFileSync(path.join(rootDir, metrics.dictionary.url.slice(1)));
+  hash = createHash('sha256').update(dictionary).digest();
+  css = fs.readFileSync(path.join(rootDir, resource.url.slice(1)));
 });
 after(() => new Promise((resolve) => server.close(resolve)));
 
-// node:http preserves the encoded body; fetch would transparently decompress br/gzip.
-function request(url, headers = {}, method = 'GET') {
+// node:http preserves the encoded body; fetch transparently decompresses br/gzip.
+function request(url, headers = {}, method = 'GET', baseUrl = origin) {
   return new Promise((resolve, reject) => {
-    http.get(origin + url, { headers, method }, (res) => {
+    http.get(baseUrl + url, { headers, method }, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
       res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
@@ -34,54 +47,124 @@ function request(url, headers = {}, method = 'GET') {
   });
 }
 
-test('build: DCB contains the raw dictionary hash and restores the exact minified CSS', () => {
-  assert.equal(manifest.dictionary.sha256, hash.toString('base64'));
-  assert.equal(dictionary.length, manifest.dictionary.bytes);
-  assert.notDeepEqual(css, dictionary, 'The fixture represents two different releases');
-  for (const asset of manifest.resources) {
-    const original = fs.readFileSync(path.join(rootDir, asset.url));
-    const dcb = fs.readFileSync(path.join(rootDir, `${asset.url}.dcb`));
-    assert.deepEqual(dcb.subarray(0, 4), Buffer.from([0xff, 0x44, 0x43, 0x42]));
-    assert.deepEqual(dcb.subarray(4, 36), hash);
-    assert.deepEqual(Buffer.from(brotli.decompress(dcb.subarray(36), { customDictionary: dictionary })), original);
+async function fixture(t) {
+  const temporaryRoot = path.resolve(os.tmpdir());
+  const directory = fs.mkdtempSync(path.join(temporaryRoot, 'dictionary-server-test-'));
+  const fixtureRoot = path.join(directory, 'build');
+  fs.cpSync(rootDir, fixtureRoot, { recursive: true });
+  const fixtureServer = createDemoServer({ rootDir: fixtureRoot, logger });
+  t.after(async () => {
+    await new Promise((resolve) => fixtureServer.close(resolve));
+    assert.equal(path.dirname(path.resolve(directory)), temporaryRoot);
+    assert.ok(path.basename(directory).startsWith('dictionary-server-test-'));
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  await new Promise((resolve) => fixtureServer.listen(0, '127.0.0.1', resolve));
+  const baseUrl = `http://127.0.0.1:${fixtureServer.address().port}`;
+  const filename = (url) => path.join(fixtureRoot, url.replace(/^\//, ''));
+  const write = (url, bytes) => {
+    fs.mkdirSync(path.dirname(filename(url)), { recursive: true });
+    fs.writeFileSync(filename(url), bytes);
+  };
+  return {
+    filename,
+    write,
+    request: (url, headers, method) => request(url, headers, method, baseUrl),
+    manifest: (value) => write(manifestUrl, JSON.stringify(value)),
+    publishDictionary(bytes, stem = 'next') {
+      const digest = createHash('sha256').update(bytes).digest();
+      const name = `dictionaries/${stem}.${digest.toString('hex')}.dat`;
+      write(name, bytes);
+      return { name, url: `/${name}`, digest, entry: {
+        sha256Base64: digest.toString('base64'),
+        availableDictionary: `:${digest.toString('base64')}:`,
+      } };
+    },
+  };
+}
+
+test('build: production manifest identifies the dictionaries; DCB and HTTP fallbacks restore the exact CSS', async () => {
+  assert.equal(fs.existsSync(path.join(rootDir, 'demo-manifest.json')), false,
+    'Demo statistics must be derived at runtime, not emitted as a second manifest');
+  assert.equal(fs.readdirSync(rootDir, { recursive: true }).some((name) => /\.(br|gz)$/.test(name)), false,
+    'Ordinary HTTP fallbacks are generated by the server, not emitted by another plugin');
+  assert.deepEqual(Object.keys(productionManifest), ['dictionaries']);
+  assert.equal(metrics.manifestUrl, manifestUrl);
+  assert.equal(metrics.dictionary.sha256Base64, hash.toString('base64'));
+  assert.equal(dictionary.length, metrics.dictionary.bytes);
+  const dictionaryEntry = productionManifest.dictionaries[metrics.dictionary.url.slice(1)];
+  assert.equal(dictionaryEntry.sha256Base64, hash.toString('base64'));
+  assert.equal(dictionaryEntry.availableDictionary, `:${hash.toString('base64')}:`);
+
+  for (const asset of metrics.resources) {
+    const original = fs.readFileSync(path.join(rootDir, asset.url.slice(1)));
+    const dcb = fs.readFileSync(path.join(rootDir, `${asset.url.slice(1)}.dcb`));
+    const assetDictionary = fs.readFileSync(path.join(rootDir, asset.dictionaryUrl.slice(1)));
+    const expectedHash = productionManifest.dictionaries[asset.dictionaryUrl.slice(1)].sha256Base64;
+    assert.deepEqual(dcb.subarray(0, 4), magic);
+    assert.equal(dcb.subarray(4, 36).toString('base64'), expectedHash);
+    assert.deepEqual(Buffer.from(brotli.decompress(dcb.subarray(36), { customDictionary: assetDictionary })), original);
     assert.throws(() => brotli.decompress(dcb.subarray(36)), 'This fixture actually requires the dictionary');
     assert.equal(dcb.length, asset.dcbBytes);
     assert.equal(original.length, asset.bytes);
-    for (const [extension, size, decode] of [
-      ['br', asset.brotliBytes, brotliDecompressSync], ['gz', asset.gzipBytes, gunzipSync],
+    for (const [encoding, size, decode] of [
+      ['br', asset.brotliBytes, brotliDecompressSync], ['gzip', asset.gzipBytes, gunzipSync],
     ]) {
-      const encoded = fs.readFileSync(path.join(rootDir, `${asset.url}.${extension}`));
-      assert.equal(encoded.length, size);
-      assert.deepEqual(decode(encoded), original);
+      const response = await request(asset.url, { 'Accept-Encoding': encoding });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers['content-encoding'], encoding);
+      assert.equal(response.body.length, size);
+      assert.deepEqual(decode(response.body), original);
     }
   }
 });
 
-test('discovery: versioned dictionary, two-week cache and native HTML link', async () => {
-  const dict = await request(manifest.dictionary.url, { 'Accept-Encoding': 'br' });
+test('discovery: the server reads production manifest URLs and injects them into every HTML representation', async () => {
+  const publishedManifest = await request(manifestUrl);
+  assert.equal(publishedManifest.status, 200);
+  assert.deepEqual(JSON.parse(publishedManifest.body), productionManifest);
+  assert.equal(publishedManifest.headers['cache-control'], 'no-cache');
+  assert.ok(!fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8').includes('rel="compression-dictionary"'),
+    'Discovery must be injected by the server from the current manifest');
+
+  const dict = await request(metrics.dictionary.url, { 'Accept-Encoding': 'br' });
   assert.equal(dict.status, 200);
-  assert.equal(dict.headers['use-as-dictionary'], `match="/dist/styles.*.css", id="${manifest.dictionary.id}"`);
+  assert.equal(dict.headers['use-as-dictionary'], `match="/dist/styles.*.css", id="${metrics.dictionary.id}"`);
   assert.equal(dict.headers['cache-control'], 'public, max-age=1209600, immutable');
   assert.equal(dict.headers.vary, 'Accept-Encoding');
   assert.equal(dict.headers['content-encoding'], 'br');
-  assert.equal(dict.body.length, manifest.dictionary.brotliBytes);
+  assert.equal(dict.body.length, metrics.dictionary.brotliBytes);
   assert.deepEqual(brotliDecompressSync(dict.body), dictionary);
-  const html = await request('/');
-  assert.equal(html.status, 200);
-  assert.ok(html.body.toString().includes(`rel="compression-dictionary" href="${manifest.dictionary.url}"`));
-  assert.ok(html.body.toString().includes(`href="${resource.url}"`));
-  assert.ok(!html.body.toString().includes('.css.dcb'));
+
+  for (const [encoding, decode] of [
+    ['identity', (body) => body], ['br', brotliDecompressSync], ['gzip', gunzipSync],
+  ]) {
+    const response = await request('/', { 'Accept-Encoding': encoding });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers['content-encoding'] || 'identity', encoding);
+    assert.equal(Number(response.headers['content-length']), response.body.length);
+    const html = decode(response.body).toString();
+    for (const name of Object.keys(productionManifest.dictionaries)) {
+      const link = `<link rel="compression-dictionary" href="/${name}">`;
+      assert.ok(html.includes(link));
+      assert.ok(html.indexOf(link) < html.indexOf('rel="stylesheet"'), 'Discovery precedes stylesheets');
+    }
+    assert.ok(html.includes(`href="${resource.url}"`));
+    assert.ok(!html.includes('.css.dcb'));
+    assert.ok(response.headers.link.includes(`<${metrics.dictionary.url}>; rel="compression-dictionary"`));
+  }
 });
 
-test('negotiation: hash and Accept-Encoding are both required; quality and fallback respected', async () => {
-  const available = `:${manifest.dictionary.sha256}:`;
+test('negotiation: sha256Base64 and Accept-Encoding are both required; quality and fallback respected', async () => {
+  const available = `:${metrics.dictionary.sha256Base64}:`;
   const cases = [
     [{}, 'identity'],
     [{ 'Accept-Encoding': 'gzip, br' }, 'br'],
     [{ 'Accept-Encoding': 'gzip' }, 'gzip'],
     [{ 'Accept-Encoding': 'br, dcb' }, 'br'],
     [{ 'Accept-Encoding': 'br, dcb', 'Available-Dictionary': ':unknown:' }, 'br'],
-    [{ 'Accept-Encoding': 'br, dcb', 'Dictionary-ID': `"${manifest.dictionary.id}"` }, 'br'],
+    [{ 'Accept-Encoding': 'br, dcb', 'Available-Dictionary': metrics.dictionary.sha256Base64 }, 'br'],
+    [{ 'Accept-Encoding': 'br, dcb', 'Dictionary-ID': `"${metrics.dictionary.id}"` }, 'br'],
     [{ 'Accept-Encoding': 'br', 'Available-Dictionary': available }, 'br'],
     [{ 'Accept-Encoding': 'gzip, br, dcb', 'Available-Dictionary': available }, 'dcb'],
     [{ 'Accept-Encoding': 'br, dcb;q=0', 'Available-Dictionary': available }, 'br'],
@@ -111,19 +194,127 @@ test('negotiation: hash and Accept-Encoding are both required; quality and fallb
 });
 
 test('reject unacceptable encodings and keep raw sidecars/private paths inaccessible', async () => {
-  assert.equal((await request('/demo-manifest.json', { 'Accept-Encoding': 'identity;q=0' })).status, 406);
+  for (const url of [manifestUrl, '/api/demo-stats']) {
+    assert.equal((await request(url, { 'Accept-Encoding': 'identity;q=0' })).status, 406);
+  }
   for (const value of ['*;q=0', 'br;q=0, gzip;q=0, identity;q=0', 'dcb, identity;q=0']) {
     const result = await request(resource.url, { 'Accept-Encoding': value });
     assert.equal(result.status, 406, value);
     assert.equal(result.headers.vary, 'Accept-Encoding, Available-Dictionary');
   }
-  for (const url of [resource.url + '.dcb', '/package.json', '/%2e%2e/package.json', '/missing.css']) {
+  for (const url of [
+    resource.url + '.dcb', resource.url + '.br', resource.url + '.gz',
+    '/package.json', '/%2e%2e/package.json', '/missing.css', '/.dictionary-cache/styles.dat', '/demo-manifest.json',
+  ]) {
     assert.equal((await request(url)).status, 404, url);
   }
-  const head = await request(resource.url, { 'Accept-Encoding': 'dcb', 'Available-Dictionary': `:${manifest.dictionary.sha256}:` }, 'HEAD');
+  const head = await request(resource.url, {
+    'Accept-Encoding': 'dcb', 'Available-Dictionary': `:${metrics.dictionary.sha256Base64}:`,
+  }, 'HEAD');
   assert.equal(head.status, 200);
   assert.equal(head.body.length, 0);
   assert.equal(Number(head.headers['content-length']), resource.dcbBytes);
   assert.equal(head.headers['content-encoding'], 'dcb');
   assert.equal((await request(resource.url, {}, 'POST')).status, 405);
+});
+
+test('runtime: dictionary membership is insufficient without the CSS DCB hash, and sha256Base64 is authoritative', async (t) => {
+  const project = await fixture(t);
+  const other = project.publishDictionary(Buffer.from('.another-release{color:purple}'), 'other');
+  const entries = structuredClone(productionManifest.dictionaries);
+  const selectedEntry = entries[metrics.dictionary.url.slice(1)];
+  selectedEntry.availableDictionary = other.entry.availableDictionary;
+  entries[other.name] = other.entry;
+  project.manifest({ dictionaries: entries });
+  // An old demo manifest is never served or used, even if it remains on disk.
+  project.write('/demo-manifest.json', JSON.stringify({ dictionary: { url: other.url }, resources: [] }));
+  assert.equal((await project.request('/demo-manifest.json')).status, 404);
+
+  const html = (await project.request('/')).body.toString();
+  assert.ok(html.includes(`rel="compression-dictionary" href="${metrics.dictionary.url}"`));
+  assert.ok(html.includes(`rel="compression-dictionary" href="${other.url}"`));
+  const currentMetrics = JSON.parse((await project.request('/api/demo-stats')).body);
+  assert.equal(currentMetrics.dictionary.url, metrics.dictionary.url);
+  assert.equal(currentMetrics.dictionary.sha256Base64, metrics.dictionary.sha256Base64);
+  assert.equal(currentMetrics.dictionary.availableDictionary, `:${metrics.dictionary.sha256Base64}:`);
+
+  for (const [available, expected] of [
+    [other.entry.availableDictionary, 'br'],
+    [`:${metrics.dictionary.sha256Base64}:`, 'dcb'],
+  ]) {
+    const response = await project.request(resource.url, {
+      'Accept-Encoding': 'dcb, br', 'Available-Dictionary': available,
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers['content-encoding'], expected);
+  }
+});
+
+test('runtime: a manifest and dictionary rotation updates HTML, metrics and negotiation without restarting', async (t) => {
+  const project = await fixture(t);
+  const beforeRotation = (await project.request('/')).body.toString();
+  assert.ok(beforeRotation.includes(`href="${metrics.dictionary.url}"`));
+  const nextBytes = Buffer.concat([dictionary, Buffer.from('\n/* next dictionary release */')]);
+  const next = project.publishDictionary(nextBytes);
+  const nextDcb = Buffer.concat([
+    magic, next.digest, Buffer.from(brotli.compress(css, { customDictionary: nextBytes, quality: 11 })),
+  ]);
+  project.write(`${resource.url}.dcb`, nextDcb);
+  project.manifest({ dictionaries: { [next.name]: next.entry } });
+
+  for (const [encoding, decode] of [['identity', (body) => body], ['br', brotliDecompressSync], ['gzip', gunzipSync]]) {
+    const response = await project.request('/', { 'Accept-Encoding': encoding });
+    assert.equal(response.status, 200);
+    const html = decode(response.body).toString();
+    assert.ok(html.includes(`rel="compression-dictionary" href="${next.url}"`));
+    assert.ok(!html.includes(metrics.dictionary.url), 'Removed manifest entries must not survive in cached HTML');
+  }
+  assert.equal((await project.request(metrics.dictionary.url)).status, 404,
+    'An old dictionary file remaining on disk is no longer published by the manifest');
+  const currentMetrics = JSON.parse((await project.request('/api/demo-stats')).body);
+  assert.equal(currentMetrics.dictionary.url, next.url);
+  assert.equal(currentMetrics.dictionary.sha256Base64, next.entry.sha256Base64);
+  assert.equal(currentMetrics.resources[0].dictionaryUrl, next.url);
+  assert.equal(currentMetrics.resources[0].dcbBytes, nextDcb.length);
+  const oldHashResponse = await project.request(resource.url, {
+    'Accept-Encoding': 'dcb, br', 'Available-Dictionary': `:${metrics.dictionary.sha256Base64}:`,
+  });
+  assert.equal(oldHashResponse.headers['content-encoding'], 'br');
+  const newHashResponse = await project.request(resource.url, {
+    'Accept-Encoding': 'dcb, br', 'Available-Dictionary': next.entry.availableDictionary,
+  });
+  assert.equal(newHashResponse.headers['content-encoding'], 'dcb');
+  assert.deepEqual(newHashResponse.body, nextDcb);
+  assert.deepEqual(Buffer.from(brotli.decompress(newHashResponse.body.subarray(36), { customDictionary: nextBytes })), css);
+});
+
+test('runtime: missing or invalid DCB and unavailable dictionaries preserve ordinary CSS fallbacks', async (t) => {
+  const project = await fixture(t);
+  const dcbUrl = `${resource.url}.dcb`;
+  const originalDcb = fs.readFileSync(project.filename(dcbUrl));
+  const headers = { 'Accept-Encoding': 'dcb, br', 'Available-Dictionary': `:${metrics.dictionary.sha256Base64}:` };
+  const assertFallback = async () => {
+    const response = await project.request(resource.url, headers);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers['content-encoding'], 'br');
+    assert.deepEqual(brotliDecompressSync(response.body), css);
+    assert.equal((await project.request(resource.url, { ...headers, 'Accept-Encoding': 'dcb, identity;q=0' })).status, 406);
+  };
+
+  fs.unlinkSync(project.filename(dcbUrl));
+  await assertFallback();
+  const invalidMagic = Buffer.from(originalDcb);
+  invalidMagic[0] = 0;
+  project.write(dcbUrl, invalidMagic);
+  await assertFallback();
+  const wrongHash = Buffer.from(originalDcb);
+  wrongHash.fill(0, 4, 36);
+  project.write(dcbUrl, wrongHash);
+  await assertFallback();
+  project.write(dcbUrl, originalDcb);
+  fs.unlinkSync(project.filename(metrics.dictionary.url));
+  await assertFallback();
+  assert.equal((await project.request(metrics.dictionary.url)).status, 404);
+  const html = (await project.request('/')).body.toString();
+  assert.ok(!html.includes(`rel="compression-dictionary" href="${metrics.dictionary.url}"`));
 });

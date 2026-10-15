@@ -1,14 +1,14 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 
-const manifest = ref(null);
-const manifestError = ref('');
+const metrics = ref(null);
+const metricsError = ref('');
 const isRunning = ref(false);
 const probe = ref(null);
 const probeError = ref('');
 
-const resource = computed(() => manifest.value?.resources?.[0]);
-const dictionary = computed(() => manifest.value?.dictionary);
+const resource = computed(() => metrics.value?.resources?.[0]);
+const dictionary = computed(() => metrics.value?.dictionary);
 const savedBytes = computed(() => {
   if (!resource.value) return 0;
   return resource.value.brotliBytes - resource.value.dcbBytes;
@@ -44,17 +44,17 @@ function barWidth(value) {
   return `${Math.max(2, Math.min(100, (value / resource.value.bytes) * 100))}%`;
 }
 
-async function loadManifest() {
+async function loadMetrics() {
   try {
-    const response = await fetch('/demo-manifest.json', { cache: 'no-store' });
-    if (!response.ok) throw new Error(`Il manifesto risponde HTTP ${response.status}.`);
+    const response = await fetch('/api/demo-stats', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Le statistiche rispondono HTTP ${response.status}.`);
     const data = await response.json();
     if (!data.dictionary?.url || !data.resources?.[0]?.url) {
-      throw new Error('Il manifesto non contiene dizionario e risorsa CSS.');
+      throw new Error('Le statistiche non contengono dizionario e risorsa CSS.');
     }
-    manifest.value = data;
+    metrics.value = data;
   } catch (error) {
-    manifestError.value = error.message;
+    metricsError.value = error.message;
   }
 }
 
@@ -91,7 +91,7 @@ async function runProbe() {
   }
 }
 
-onMounted(loadManifest);
+onMounted(loadMetrics);
 </script>
 
 <template>
@@ -110,23 +110,23 @@ onMounted(loadManifest);
           <p class="eyebrow">Compression Dictionary Transport</p>
           <h1 id="page-title">Il tuo CSS.<br />Con meno <span>ripetizioni.</span></h1>
           <p class="hero-description">
-            Il browser conosce già una versione del foglio di stile.
-            Con un dizionario condiviso, Brotli può usare quei byte
-            per comprimere la versione successiva.
+            Il primo dizionario nasce dal CSS della build.
+            Il browser può conservarlo e Brotli può riusare quei byte
+            per comprimere gli aggiornamenti successivi.
           </p>
           <a class="text-link" href="#browser-test">Guarda cosa riceve il tuo browser <span aria-hidden="true">↗</span></a>
         </div>
-        <div class="flow-card" aria-label="Una versione precedente del CSS diventa il dizionario per la nuova versione">
-          <div class="flow-card-heading"><span class="file-icon" aria-hidden="true">{ }</span><span>Un aggiornamento, meno byte</span></div>
+        <div class="flow-card" aria-label="Un dizionario persistente comprime il CSS della build corrente">
+          <div class="flow-card-heading"><span class="file-icon" aria-hidden="true">{ }</span><span>Un dizionario da riutilizzare</span></div>
           <div class="flow-line">
-            <span class="version-chip">v1</span>
-            <div><strong>CSS precedente</strong><span>Dizionario conservato dal browser</span></div>
+            <span class="version-chip">dat</span>
+            <div><strong>Dizionario condiviso</strong><span>Creato dal CSS, conservato tra le build</span></div>
             <span class="flow-check" aria-hidden="true">✓</span>
           </div>
           <div class="flow-connector" aria-hidden="true"><span>↓</span><small>riutilizza ciò che conosci</small></div>
           <div class="flow-line flow-line-highlight">
-            <span class="version-chip version-chip-dark">v2</span>
-            <div><strong>CSS aggiornato</strong><span>Compresso con il dizionario v1</span></div>
+            <span class="version-chip version-chip-dark">css</span>
+            <div><strong>CSS della build</strong><span>Compresso con il dizionario pubblicato</span></div>
             <code>dcb</code>
           </div>
           <p class="flow-caption">Stesso CSS finale. Una rappresentazione più compatta.</p>
@@ -135,13 +135,13 @@ onMounted(loadManifest);
 
       <section class="metrics-section" aria-labelledby="metrics-title">
         <div class="section-heading">
-          <div><p class="eyebrow">01 / Il risultato della build</p><h2 id="metrics-title">Byte veri, dal progetto.</h2></div>
-          <span class="subtle-label">Dimensioni dei file generati</span>
+          <div><p class="eyebrow">01 / Il costo del trasferimento</p><h2 id="metrics-title">Byte veri, dal progetto.</h2></div>
+          <span class="subtle-label">Dimensioni delle rappresentazioni HTTP</span>
         </div>
-        <p v-if="manifestError" class="notice notice-error" role="alert">
-          {{ manifestError }} Esegui la build e avvia il server della demo.
+        <p v-if="metricsError" class="notice notice-error" role="alert">
+          {{ metricsError }} Esegui la build e avvia il server della demo.
         </p>
-        <div v-else-if="!manifest" class="notice" role="status">Caricamento dei dati della build…</div>
+        <div v-else-if="!metrics" class="notice" role="status">Caricamento delle misure…</div>
         <template v-else>
           <div class="metric-grid">
             <article class="metric-card">
@@ -154,7 +154,7 @@ onMounted(loadManifest);
               <span class="metric-label">Brotli standard <code>br</code></span>
               <strong class="metric-value">{{ formatBytes(resource.brotliBytes) }}</strong>
               <div class="metric-track" aria-hidden="true"><span class="metric-bar bar-brotli" :style="{ width: barWidth(resource.brotliBytes) }"></span></div>
-              <p>Compresso senza dizionario condiviso.</p>
+              <p>Compresso dal server senza dizionario condiviso.</p>
             </article>
             <article class="metric-card metric-card-featured">
               <span class="metric-label">Brotli con dizionario <code>dcb</code></span>
@@ -169,32 +169,33 @@ onMounted(loadManifest);
             <strong>{{ formatBytes(dictionary.brotliBytes) }}</strong> in Brotli.
             Dizionario in Brotli + CSS in DCB: <strong>{{ formatBytes(costWithDictionary) }}</strong>.
             Il risparmio sulla singola risorsa presuppone un dizionario già disponibile; intestazioni HTTP escluse.
+            Alla prima build il dizionario contiene il CSS corrente: il vantaggio va valutato sul suo riuso.
           </p>
         </template>
       </section>
 
       <section class="steps-section" aria-labelledby="steps-title">
         <div class="section-heading">
-          <div><p class="eyebrow">02 / Il percorso dei byte</p><h2 id="steps-title">Tre passaggi. Un dizionario.</h2></div>
+          <div><p class="eyebrow">02 / Dal manifest al browser</p><h2 id="steps-title">Tre passaggi. Un dizionario.</h2></div>
         </div>
         <div class="steps-grid">
           <article class="step-card">
             <span class="step-number">1</span>
-            <h3>Pubblica il dizionario</h3>
-            <p>Una snapshot del CSS v1 diventa un file immutabile. Il server lo propone con l'intestazione <code>Use-As-Dictionary</code>.</p>
-            <span class="step-tag">Dizionario → browser</span>
+            <h3>La build scrive il manifest</h3>
+            <p>Il plugin di produzione genera il dizionario e il CSS in DCB. Nel manifest registra il percorso del dizionario e il suo <code>sha256Base64</code>.</p>
+            <span class="step-tag">Build → manifest</span>
           </article>
           <article class="step-card">
             <span class="step-number">2</span>
-            <h3>Comprimi durante la build</h3>
-            <p>Webpack estrae il CSS v2. La build genera le varianti <code>.br</code> e <code>.dcb</code> usando il dizionario pubblicato.</p>
-            <span class="step-tag">CSS + dizionario → DCB</span>
+            <h3>Il server prepara l'head</h3>
+            <p>Legge il manifest e inserisce il link al dizionario nell'HTML, prima del foglio di stile. Il browser lo acquisisce con <code>Use-As-Dictionary</code>.</p>
+            <span class="step-tag">Manifest → head → browser</span>
           </article>
           <article class="step-card">
             <span class="step-number">3</span>
-            <h3>Lascia negoziare il browser</h3>
-            <p>Se supporta DCB e dispone del dizionario corretto, il browser lo segnala. Il server sceglie la rappresentazione adatta.</p>
-            <span class="step-tag">DCB → CSS originale</span>
+            <h3>L'hash decide il trasferimento</h3>
+            <p>Il server confronta <code>Available-Dictionary</code> con <code>sha256Base64</code> del dizionario usato dal DCB. Se l'hash corrisponde e DCB è accettato, invia il CSS compresso.</p>
+            <span class="step-tag">Hash verificato → DCB</span>
           </article>
         </div>
       </section>
@@ -204,7 +205,7 @@ onMounted(loadManifest);
           <p class="eyebrow">03 / La prova nel browser</p>
           <h2 id="probe-title">Cosa passa sulla rete?</h2>
           <p>Scarica il dizionario, poi richiedi di nuovo il CSS. La negoziazione è nativa: JavaScript legge la risposta restituita dal server.</p>
-          <button class="primary-button" type="button" :disabled="!manifest || isRunning" @click="runProbe">
+          <button class="primary-button" type="button" :disabled="!metrics || isRunning" @click="runProbe">
             <span>{{ isRunning ? 'Richiesta in corso…' : probe ? 'Ripeti la prova' : 'Prova il trasferimento' }}</span>
             <span aria-hidden="true">↗</span>
           </button>
@@ -234,16 +235,18 @@ onMounted(loadManifest);
         <h2 id="details-title">Verifica, senza indovinare.</h2>
         <p>Apri DevTools → Network, lascia disattivato <strong>Disable cache</strong> e avvia la prova. Sulla richiesta CSS con <code>?probe=</code> cerca <code>Available-Dictionary</code> e <code>Accept-Encoding</code> nelle intestazioni della richiesta, poi <code>Content-Encoding: dcb</code> nella risposta. L'eventuale <code>Dictionary-ID</code> identifica il dizionario.</p>
         <p>Il primo caricamento può usare Brotli standard o il CSS originale. Per usare un dizionario servono un browser compatibile e un contesto sicuro, come HTTPS o localhost.</p>
-        <details v-if="manifest" class="artifact-details">
+        <details v-if="metrics" class="artifact-details">
           <summary>Esplora i file di questa build <span aria-hidden="true">+</span></summary>
           <dl class="artifact-list">
             <div><dt>Dizionario</dt><dd><a :href="dictionary.url">{{ fileName(dictionary.url) }}</a></dd></div>
             <div><dt>ID</dt><dd><code>{{ dictionary.id }}</code></dd></div>
-            <div><dt>SHA-256</dt><dd><code>{{ dictionary.sha256 }}</code></dd></div>
+            <div><dt>SHA-256 (Base64)</dt><dd><code>{{ dictionary.sha256Base64 }}</code></dd></div>
             <div><dt>Match</dt><dd><code>{{ dictionary.match }}</code></dd></div>
             <div><dt>CSS</dt><dd><a :href="resource.url">{{ fileName(resource.url) }}</a></dd></div>
           </dl>
-          <a class="text-link" href="/demo-manifest.json">Apri il manifesto JSON <span aria-hidden="true">↗</span></a>
+          <p>Il manifest guida la discovery e il confronto dell'hash. Il DCB è generato durante la build; le misure Brotli si riferiscono alla compressione HTTP eseguita dal server.</p>
+          <p><a class="text-link" :href="metrics.manifestUrl">Apri il manifest di produzione <span aria-hidden="true">↗</span></a></p>
+          <a class="text-link" href="/api/demo-stats">Apri le statistiche della demo <span aria-hidden="true">↗</span></a>
         </details>
       </section>
     </main>

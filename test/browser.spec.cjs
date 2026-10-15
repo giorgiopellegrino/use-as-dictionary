@@ -17,13 +17,32 @@ test('Il browser negozia DCB, decodifica il CSS e applica il foglio di stile', a
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     expect(await page.evaluate(() => window.isSecureContext)).toBe(true);
 
-    const manifest = await page.evaluate(async () => {
-      const response = await fetch('/demo-manifest.json');
-      if (!response.ok) throw new Error(`Manifest HTTP ${response.status}`);
+    const metrics = await page.evaluate(async () => {
+      const response = await fetch('/api/demo-stats');
+      if (!response.ok) throw new Error(`Statistiche HTTP ${response.status}`);
       return response.json();
     });
-    const resource = manifest.resources.find((item) => item.url.endsWith('.css'));
-    expect(resource, 'Il manifest deve indicare il CSS prodotto da Webpack').toBeTruthy();
+    expect(metrics.manifestUrl).toBe('/dist/compression-dictionary-manifest.json');
+    const manifest = await page.evaluate(async (url) => {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Manifest produzione HTTP ${response.status}`);
+      return response.json();
+    }, metrics.manifestUrl);
+    const resource = metrics.resources.find((item) => item.url.endsWith('.css'));
+    expect(resource, 'Le statistiche devono indicare il CSS prodotto da Webpack').toBeTruthy();
+    const dictionary = metrics.dictionary;
+    const dictionaryEntry = manifest.dictionaries[dictionary.url.slice(1)];
+    expect(dictionaryEntry.sha256Base64).toBe(dictionary.sha256Base64);
+    expect(resource.dictionaryUrl).toBe(dictionary.url);
+    const discoveryUrls = await page.locator('head link[rel="compression-dictionary"]').evaluateAll(
+      (links) => links.map((link) => link.getAttribute('href')),
+    );
+    expect(discoveryUrls.sort()).toEqual(Object.keys(manifest.dictionaries).map((name) => `/${name}`).sort());
+    expect(await page.locator('head').evaluate((head) => {
+      const dictionaryLink = head.querySelector('link[rel="compression-dictionary"]');
+      const stylesheet = head.querySelector('link[rel="stylesheet"]');
+      return Boolean(dictionaryLink.compareDocumentPosition(stylesheet) & Node.DOCUMENT_POSITION_FOLLOWING);
+    })).toBe(true);
     const sourceCss = await readFile(path.join(__dirname, '..', 'build', resource.url.slice(1)), 'utf8');
 
     // Lettura completa: Chrome registra il dizionario solo dopo averne ricevuto il corpo.
@@ -31,8 +50,8 @@ test('Il browser negozia DCB, decodifica il CSS e applica il foglio di stile', a
       const response = await fetch(dictionaryUrl);
       if (!response.ok) throw new Error(`Dizionario HTTP ${response.status}`);
       return (await response.arrayBuffer()).byteLength;
-    }, manifest.dictionary.url);
-    expect(dictionaryBytes).toBe(manifest.dictionary.bytes);
+    }, dictionary.url);
+    expect(dictionaryBytes).toBe(dictionary.bytes);
 
     let attempt = 0;
     let negotiated;
@@ -56,8 +75,8 @@ test('Il browser negozia DCB, decodifica il CSS e applica il foglio di stile', a
     // La decodifica avviene nello stack HTTP nativo, senza WASM o header imposti dal test.
     expect(negotiated.text).toBe(sourceCss);
     const requestHeaders = await negotiated.request.allHeaders();
-    expect(requestHeaders['available-dictionary']).toBe(`:${manifest.dictionary.sha256}:`);
-    expect(requestHeaders['dictionary-id']).toBe(JSON.stringify(manifest.dictionary.id));
+    expect(requestHeaders['available-dictionary']).toBe(`:${dictionaryEntry.sha256Base64}:`);
+    expect(requestHeaders['dictionary-id']).toBe(JSON.stringify(dictionary.id));
     expect(requestHeaders['accept-encoding'].split(',').map((value) => value.trim())).toContain('dcb');
 
     await page.getByRole('button', { name: 'Prova il trasferimento', exact: true }).click();

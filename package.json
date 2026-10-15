@@ -22,10 +22,8 @@
     "brotli-wasm-custom-dictionary": "3.1.1",
     "css-loader": "7.1.5",
     "css-minimizer-webpack-plugin": "8.0.0",
-    "cssnano": "7.1.9",
     "html-webpack-plugin": "5.6.8",
     "mini-css-extract-plugin": "2.10.2",
-    "postcss": "8.5.29",
     "vue-loader": "17.4.2",
     "webpack": "5.111.1",
     "webpack-cli": "7.2.3"

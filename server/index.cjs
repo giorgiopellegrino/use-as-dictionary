@@ -3,7 +3,8 @@ const https = require('node:https');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
-const { selectEncoding } = require('./negotiation.cjs');
+const { selectEncoding, encodeBody } = require('./negotiation.cjs');
+const { MANIFEST_NAME, MANIFEST_URL, loadBuild, demoMetrics, renderHtml } = require('./build.cjs');
 
 const DEFAULT_ROOT = path.resolve(__dirname, '../build');
 const DICTIONARY_CACHE = 'public, max-age=1209600, immutable';
@@ -11,7 +12,7 @@ const CSS_VARY = 'Accept-Encoding, Available-Dictionary';
 
 function createDemoServer({ rootDir = DEFAULT_ROOT, tls, logger = console } = {}) {
   // Fail immediately with an actionable message if the project hasn't been built.
-  if (!fs.existsSync(path.join(rootDir, 'demo-manifest.json'))) {
+  if (!fs.existsSync(path.join(rootDir, MANIFEST_NAME)) || !fs.existsSync(path.join(rootDir, 'index.html'))) {
     throw new Error('Build assente: esegui npm run build prima di npm run serve.');
   }
   const handler = async (req, res) => {
@@ -25,44 +26,56 @@ function createDemoServer({ rootDir = DEFAULT_ROOT, tls, logger = console } = {}
         return;
       }
       const pathname = new URL(req.url, 'http://localhost').pathname;
-      // Reload the manifest so build:watch can publish a fresh set of assets.
-      const manifest = JSON.parse(await fsp.readFile(path.join(rootDir, 'demo-manifest.json'), 'utf8'));
-      const dictionary = manifest.dictionary;
-      const css = manifest.resources.find((resource) => resource.url === pathname);
-      const isDictionary = pathname === dictionary.url;
+      // One source of dictionary identities for discovery and HTTP negotiation.
+      const build = await loadBuild(rootDir);
+      const css = build.resources.find((resource) => resource.url === pathname);
+      const dictionary = build.dictionaries.find((item) => item.url === pathname);
+      const script = build.scripts.find((item) => item.url === pathname);
       const isHtml = pathname === '/' || pathname === '/index.html';
-      const isManifest = pathname === '/demo-manifest.json';
-      const isScript = /^\/dist\/app\.[a-f0-9]{16}\.js$/.test(pathname);
-      if (!css && !isDictionary && !isHtml && !isManifest && !isScript) {
+      const isMetrics = pathname === '/api/demo-stats';
+      const isManifest = pathname === MANIFEST_URL;
+      if (!css && !dictionary && !isHtml && !isManifest && !isMetrics && !script) {
         plain(404, 'Risorsa non trovata');
         return;
       }
       const headers = {
         'X-Content-Type-Options': 'nosniff',
-        'Cache-Control': isHtml || isManifest ? 'no-cache' : DICTIONARY_CACHE,
+        'Cache-Control': isHtml || isManifest || isMetrics ? 'no-cache' : DICTIONARY_CACHE,
       };
       headers.Vary = css ? CSS_VARY : 'Accept-Encoding';
-      const dictionaryMatches = Boolean(css) && req.headers['available-dictionary']?.trim() === `:${dictionary.sha256}:`;
-      const encoding = selectEncoding(req.headers['accept-encoding'], dictionaryMatches,
-        isManifest ? [] : ['dcb', 'br', 'gzip']);
+      const cssDictionary = css && build.dictionaries.find((item) => item.url === css.dictionaryUrl);
+      const dictionaryMatches = Boolean(cssDictionary)
+        && req.headers['available-dictionary']?.trim() === `:${cssDictionary.sha256Base64}:`;
+      const asset = css || dictionary || script;
+      const supported = asset || isHtml ? [...(cssDictionary ? ['dcb'] : []), 'br', 'gzip'] : [];
+      const encoding = selectEncoding(req.headers['accept-encoding'], dictionaryMatches, supported);
       if (!encoding) {
         plain(406, 'Nessuna rappresentazione accettabile', { ...headers, 'Cache-Control': 'no-store' });
         return;
       }
       if (css) headers['Content-Type'] = 'text/css; charset=utf-8';
-      if (isDictionary) {
+      if (dictionary) {
         headers['Content-Type'] = 'application/octet-stream';
         headers['Use-As-Dictionary'] = `match="${dictionary.match}", id="${dictionary.id}"`;
       }
-      if (isScript) headers['Content-Type'] = 'text/javascript; charset=utf-8';
-      if (isManifest) headers['Content-Type'] = 'application/json; charset=utf-8';
+      if (script) headers['Content-Type'] = 'text/javascript; charset=utf-8';
+      if (isManifest || isMetrics) headers['Content-Type'] = 'application/json; charset=utf-8';
+      let body;
       if (isHtml) {
         headers['Content-Type'] = 'text/html; charset=utf-8';
-        headers.Link = `<${dictionary.url}>; rel="compression-dictionary"`;
+        if (build.dictionaries.length) {
+          headers.Link = build.dictionaries.map((item) => `<${item.url}>; rel="compression-dictionary"`).join(', ');
+        }
+        // Inject before compression so every HTML representation uses this manifest.
+        body = Buffer.from(renderHtml(await fsp.readFile(path.join(rootDir, 'index.html'), 'utf8'), build.dictionaries));
+      } else if (isManifest) {
+        body = build.manifestBytes;
+      } else if (isMetrics) {
+        body = Buffer.from(`${JSON.stringify(demoMetrics(build), null, 2)}\n`);
+      } else {
+        body = encoding === 'dcb' ? css.dcbContent : asset.content;
       }
-      const suffix = { identity: '', br: '.br', gzip: '.gz', dcb: '.dcb' }[encoding];
-      const filename = isHtml ? 'index.html' : pathname.slice(1);
-      const body = await fsp.readFile(path.join(rootDir, filename + suffix));
+      if (encoding !== 'dcb') body = encodeBody(body, encoding);
       if (encoding !== 'identity') headers['Content-Encoding'] = encoding;
       headers['Content-Length'] = body.length;
       res.writeHead(200, headers);

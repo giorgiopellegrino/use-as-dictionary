@@ -1,3 +1,5 @@
+const { brotliCompressSync, gzipSync, constants } = require('node:zlib');
+
 // Prefer a compressed representation unless identity is explicitly preferred.
 // An unknown/missing dictionary can never select dcb, even with Dictionary-ID.
 function selectEncoding(acceptEncoding, dictionaryMatches = false, supported = ['dcb', 'br', 'gzip']) {
@@ -27,4 +29,14 @@ function selectEncoding(acceptEncoding, dictionaryMatches = false, supported = [
   return identityQuality === 0 ? null : 'identity';
 }
 
-module.exports = { selectEncoding };
+// Ordinary HTTP compression belongs to the server; DCB is already built by Webpack.
+function encodeBody(body, encoding) {
+  if (encoding === 'br') {
+    return brotliCompressSync(body, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } });
+  }
+  if (encoding === 'gzip') return gzipSync(body, { level: 9 });
+  if (encoding === 'identity') return body;
+  throw new Error(`Codifica HTTP non gestita: ${encoding}`);
+}
+
+module.exports = { selectEncoding, encodeBody };
