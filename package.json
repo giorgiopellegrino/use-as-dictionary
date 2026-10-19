@@ -1,7 +1,7 @@
 {
   "name": "use-as-dictionary",
   "version": "1.0.0",
-  "private": true,
+  "private": false,
   "description": "Webpack and Vite plugins for Compression Dictionary Transport with Shared Brotli dictionaries",
   "exports": {
     "./webpack": "./src/webpack.cjs",
