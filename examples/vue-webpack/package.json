@@ -10,7 +10,7 @@
   "scripts": {
     "build": "webpack --mode production",
     "build:watch": "webpack --mode production --watch",
-    "serve": "node server/index.cjs",
+    "serve": "node ../shared/server/index.cjs",
     "start": "npm run build && npm run serve"
   },
   "dependencies": {

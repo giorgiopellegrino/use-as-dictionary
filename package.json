@@ -2,10 +2,12 @@
   "name": "use-as-dictionary",
   "version": "1.0.0",
   "private": true,
-  "description": "Webpack plugin for Compression Dictionary Transport with Shared Brotli dictionaries",
+  "description": "Webpack and Vite plugins for Compression Dictionary Transport with Shared Brotli dictionaries",
   "main": "./src/CompressionDictionaryPlugin.cjs",
   "exports": {
-    ".": "./src/CompressionDictionaryPlugin.cjs"
+    ".": "./src/CompressionDictionaryPlugin.cjs",
+    "./webpack": "./src/CompressionDictionaryPlugin.cjs",
+    "./vite": "./src/vite.cjs"
   },
   "files": [
     "src/"
@@ -23,6 +25,8 @@
   "keywords": [
     "webpack",
     "webpack-plugin",
+    "vite",
+    "vite-plugin",
     "compression-dictionary-transport",
     "brotli",
     "dcb"
@@ -31,29 +35,41 @@
     "node": ">=22.12.0"
   },
   "workspaces": [
-    "examples/vue-webpack"
+    "examples/vue-webpack",
+    "examples/vue-vite"
   ],
   "scripts": {
     "build": "npm run build --workspace @use-as-dictionary/example-vue-webpack",
     "build:watch": "npm run build:watch --workspace @use-as-dictionary/example-vue-webpack",
     "serve": "npm run serve --workspace @use-as-dictionary/example-vue-webpack",
     "start": "npm start --workspace @use-as-dictionary/example-vue-webpack",
-    "test": "npm run build && node --test test/*.test.cjs",
+    "build:vite": "npm run build --workspace @use-as-dictionary/example-vue-vite",
+    "serve:vite": "npm run serve --workspace @use-as-dictionary/example-vue-vite",
+    "start:vite": "npm start --workspace @use-as-dictionary/example-vue-vite",
+    "build:all": "npm run build --workspaces",
+    "test": "npm run build:all && node --test test/*.test.cjs",
     "test:plugin": "node --test test/production-plugin.test.cjs",
-    "test:browser": "npm run build && playwright test",
+    "test:vite": "node --test test/vite-plugin.test.cjs",
+    "test:browser": "npm run build:all && playwright test",
     "test:package": "node scripts/check-package.cjs"
   },
   "dependencies": {
     "brotli-wasm-custom-dictionary": "3.1.1"
   },
   "peerDependencies": {
-    "webpack": "^5.0.0"
+    "webpack": "^5.0.0",
+    "vite": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "webpack": { "optional": true },
+    "vite": { "optional": true }
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
     "css-loader": "7.1.5",
     "css-minimizer-webpack-plugin": "8.0.0",
     "mini-css-extract-plugin": "2.10.2",
-    "webpack": "5.111.1"
+    "webpack": "5.111.1",
+    "vite": "8.3.4"
   }
 }

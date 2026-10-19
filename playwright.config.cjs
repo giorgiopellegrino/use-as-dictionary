@@ -20,17 +20,21 @@ module.exports = defineConfig({
   use: {
     browserName: 'chromium',
     ...(channel === 'chromium' ? {} : { channel }),
-    baseURL: 'http://localhost:4174',
     viewport: { width: 1280, height: 900 },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  webServer: {
-    command: 'node server/index.cjs',
-    cwd: path.join(__dirname, 'examples/vue-webpack'),
-    env: { PORT: '4174', HOST: 'localhost' },
-    url: 'http://localhost:4174/',
+  projects: ['webpack', 'vite'].map((bundler, index) => ({
+    name: bundler,
+    use: { baseURL: `http://localhost:${4174 + index}` },
+    metadata: { buildDir: path.join(__dirname, 'examples', `vue-${bundler}`, 'build') },
+  })),
+  webServer: ['webpack', 'vite'].map((bundler, index) => ({
+    command: 'node ../shared/server/index.cjs',
+    cwd: path.join(__dirname, 'examples', `vue-${bundler}`),
+    env: { PORT: String(4174 + index), HOST: 'localhost' },
+    url: `http://localhost:${4174 + index}/`,
     reuseExistingServer: false,
     timeout: 15_000,
-  },
+  })),
 });

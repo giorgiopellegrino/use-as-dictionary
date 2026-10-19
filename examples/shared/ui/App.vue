@@ -1,6 +1,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 
+defineProps({ bundler: { type: String, required: true } });
+
 const metrics = ref(null);
 const metricsError = ref('');
 const isRunning = ref(false);
@@ -101,7 +103,7 @@ onMounted(loadMetrics);
         <span class="brand-icon" aria-hidden="true">{ }</span>
         <span>css / <strong>with memory</strong></span>
       </a>
-      <span class="stack-label"><span class="status-dot" aria-hidden="true"></span> Vue + Webpack</span>
+      <span class="stack-label"><span class="status-dot" aria-hidden="true"></span> Vue + {{ bundler }}</span>
     </header>
 
     <main>
@@ -148,7 +150,7 @@ onMounted(loadMetrics);
               <span class="metric-label">Original CSS</span>
               <strong class="metric-value">{{ formatBytes(resource.bytes) }}</strong>
               <div class="metric-track" aria-hidden="true"><span class="metric-bar bar-original" style="width: 100%"></span></div>
-              <p>The file after the Webpack build.</p>
+              <p>The file after the {{ bundler }} build.</p>
             </article>
             <article class="metric-card">
               <span class="metric-label">Standard Brotli <code>br</code></span>
@@ -251,6 +253,6 @@ onMounted(loadMetrics);
       </section>
     </main>
 
-    <footer class="site-footer"><span>CSS, with memory.</span><span>An experiment with Vue, Webpack and Brotli.</span></footer>
+    <footer class="site-footer"><span>CSS, with memory.</span><span>An experiment with Vue, {{ bundler }} and Brotli.</span></footer>
   </div>
 </template>

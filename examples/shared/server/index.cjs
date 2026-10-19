@@ -6,7 +6,8 @@ const path = require('node:path');
 const { selectEncoding, encodeBody } = require('./negotiation.cjs');
 const { MANIFEST_NAME, MANIFEST_URL, loadBuild, demoMetrics, renderHtml } = require('./build.cjs');
 
-const DEFAULT_ROOT = path.resolve(__dirname, '../build');
+// Workspace scripts start this shared server from the selected example.
+const DEFAULT_ROOT = path.resolve(process.cwd(), 'build');
 const DICTIONARY_CACHE = 'public, max-age=1209600, immutable';
 const CSS_VARY = 'Accept-Encoding, Available-Dictionary';
 

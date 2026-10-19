@@ -61,7 +61,7 @@ async function loadBuild(rootDir) {
   }))).filter(Boolean);
   const byHash = new Map(dictionaries.map((dictionary) => [dictionary.sha256Base64, dictionary]));
   const files = (await fs.readdir(path.join(rootDir, 'dist'))).sort();
-  const resources = (await Promise.all(files.filter((name) => /^styles\.[a-f0-9]+\.css$/.test(name)).map(async (name) => {
+  const resources = (await Promise.all(files.filter((name) => /^styles\.[A-Za-z0-9_-]+\.css$/.test(name)).map(async (name) => {
     const assetName = `dist/${name}`;
     const [asset, dcb] = await Promise.all([
       describeAsset(rootDir, assetName), describeDcb(path.join(rootDir, `${assetName}.dcb`)),
@@ -75,7 +75,7 @@ async function loadBuild(rootDir) {
       dictionaryUrl: dictionary?.url ?? null,
     };
   }))).filter(Boolean);
-  const scripts = (await Promise.all(files.filter((name) => /^app\.[a-f0-9]+\.js$/.test(name))
+  const scripts = (await Promise.all(files.filter((name) => /^app\.[A-Za-z0-9_-]+\.js$/.test(name))
     .map((name) => describeAsset(rootDir, `dist/${name}`)))).filter(Boolean);
   return { manifestBytes, dictionaries, resources, scripts };
 }

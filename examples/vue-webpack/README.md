@@ -2,7 +2,7 @@
 
 This example uses [`CompressionDictionaryPlugin`](../../README.md) to compress a Vue application's CSS with Compression Dictionary Transport. It imports the plugin as `require('use-as-dictionary')` through the repository's npm workspace dependency.
 
-The build emits dictionary assets and a manifest. The included HTTP server uses those assets for dictionary discovery, encoding negotiation, and standard Brotli/gzip fallback responses.
+The build emits dictionary assets and a manifest. The [shared HTTP server](../shared/server/index.cjs) uses those assets for dictionary discovery, encoding negotiation, and standard Brotli/gzip fallback responses. This example and the [Vite example](../vue-vite/README.md) use the same Vue interface and server.
 
 ## Run the example
 
@@ -24,6 +24,8 @@ npm run serve --workspace=@use-as-dictionary/example-vue-webpack
 
 You can also run `npm run build`, `npm run serve`, or `npm start` inside `examples/vue-webpack/` after installing dependencies from the root.
 
+The Vue component and stylesheet live in [examples/shared/ui](../shared/ui). This workspace keeps its own [src/main.js](src/main.js), Webpack configuration, build directory, and dictionary cache. Its `serve` script runs `node ../shared/server/index.cjs` from the workspace directory, which selects this example's `build/` output.
+
 ## Build and dictionary persistence
 
 [webpack.config.cjs](webpack.config.cjs) selects the minified CSS emitted by Webpack:
@@ -43,7 +45,7 @@ When the cache is missing, the current CSS becomes the first dictionary. Later b
 
 This measurement includes the 36-byte DCB header and compares DCB with minified, uncompressed CSS. It excludes the initial dictionary download and does not compare DCB with ordinary Brotli.
 
-Preserve `examples/vue-webpack/.dictionary-cache/styles.dat` between builds, including in CI. It is excluded from Git and sits outside `build/`, so cleaning the Webpack output does not remove it. To try reuse, edit [src/styles.css](src/styles.css) and rebuild without deleting the cache.
+Preserve `examples/vue-webpack/.dictionary-cache/styles.dat` between builds, including in CI. It is excluded from Git and sits outside `build/`, so cleaning the Webpack output does not remove it. To try reuse, edit [the shared stylesheet](../shared/ui/styles.css) and rebuild without deleting the cache.
 
 Paths below are relative to `examples/vue-webpack/`:
 
@@ -83,7 +85,7 @@ When serving HTML, the server inserts `<link rel="compression-dictionary">` into
 
 The dictionary response includes `Use-As-Dictionary: match="/dist/styles.*.css"`, an `id`, and an immutable two-week cache policy. The server sends DCB only when the browser accepts it and `Available-Dictionary` matches the digest of the dictionary used by that CSS resource. Otherwise, it negotiates Brotli, gzip, or identity. CSS responses use `Vary: Accept-Encoding, Available-Dictionary`; a dictionary ID does not replace the hash comparison.
 
-See [server/build.cjs](server/build.cjs) for manifest loading and resource association, [server/negotiation.cjs](server/negotiation.cjs) for encoding selection, and [server/index.cjs](server/index.cjs) for HTTP responses.
+See [the shared server's build.cjs](../shared/server/build.cjs) for manifest loading and resource association, [negotiation.cjs](../shared/server/negotiation.cjs) for encoding selection, and [index.cjs](../shared/server/index.cjs) for HTTP responses.
 
 ## Measurements and manual browser check
 
@@ -104,21 +106,21 @@ The browser negotiates and decodes the response natively. If it has not register
 Run these from the repository root:
 
 ```sh
-npm run build          # Build and create/update the dictionary as needed
-npm run build:watch    # Watch example sources and rebuild
-npm run serve          # Serve an existing build
-npm start              # Build and serve
-npm test               # Build and run Node tests
-npm run test:plugin    # Run plugin tests
-npm run test:browser   # Build and run browser tests
-npm run test:package   # Check the plugin package
+npm run build          # Build the Webpack example and create/update its dictionary
+npm run build:watch    # Watch example sources and rebuild with Webpack
+npm run serve          # Serve the existing Webpack build
+npm start              # Build and serve the Webpack example
+npm test               # Build both examples and run Node tests
+npm run test:plugin    # Run Webpack adapter tests
+npm run test:browser   # Build both examples and run both browser projects
+npm run test:package   # Check the package in separate Webpack and Vite consumers
 ```
 
 For development, run `npm run build:watch` and `npm run serve` in separate terminals. Refresh the page after a build finishes. Local output replacement is not atomic, so requests during a rebuild may fail.
 
 ### Browser tests
 
-The Node tests verify the DCB format, manifest, discovery, and HTTP negotiation. Browser tests additionally verify native CSS decoding and application.
+The Node tests verify the DCB format, manifest, discovery, and HTTP negotiation. Browser tests additionally verify native CSS decoding and application for the Webpack and Vite builds. To select just this example, run `npm run test:browser -- --project=webpack` from the root.
 
 `npm run test:browser` uses an installed Chrome browser by default. To use Playwright's Chromium, run these commands from the repository root in PowerShell:
 
@@ -128,7 +130,7 @@ $env:PLAYWRIGHT_CHANNEL = 'chromium'
 npm run test:browser
 ```
 
-`PLAYWRIGHT_CHANNEL` also accepts `chrome` and `msedge` when those browsers are installed. The browser test server runs on port `4174`.
+`PLAYWRIGHT_CHANNEL` also accepts `chrome` and `msedge` when those browsers are installed. The Webpack browser test server runs on port `4174`; the Vite project uses port `4175`.
 
 ## Remote deployment
 
