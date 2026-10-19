@@ -1,6 +1,6 @@
 # Vue + Vite example
 
-This example uses the [`compressionDictionary` Vite adapter](../../README.md#vite-configuration) to compress a Vue application's CSS with Compression Dictionary Transport. It imports `use-as-dictionary/vite` through the repository's npm workspace dependency.
+This example uses the [`CompressionDictionaryPlugin` Vite class](../../README.md#vite-configuration) to compress a Vue application's CSS with Compression Dictionary Transport. It imports `use-as-dictionary/vite` through the repository's npm workspace dependency.
 
 The example uses Vite **8** and shares its [Vue interface](../shared/ui) and [HTTP server](../shared/server/index.cjs) with the [Webpack example](../vue-webpack/README.md). Each workspace has its own entry point, build output, and persistent dictionary cache.
 
@@ -31,9 +31,9 @@ The Webpack example uses the same default port. Stop it before starting this exa
 [vite.config.js](vite.config.js) adds the Vue plugin and the dictionary adapter. The dictionary options follow this form:
 
 ```js
-import compressionDictionary from 'use-as-dictionary/vite';
+import CompressionDictionaryPlugin from 'use-as-dictionary/vite';
 
-compressionDictionary({
+new CompressionDictionaryPlugin({
   test: /^dist\/styles\.[A-Za-z0-9_-]+\.css$/,
   dictionarySource: '.dictionary-cache/styles.dat',
   autoUpdate: { minSavings: 0.9 },
@@ -90,24 +90,25 @@ To inspect a transfer, open DevTools **Network**, leave **Disable cache** unchec
 Run these from the repository root:
 
 ```sh
-npm run build:vite     # Build the Vite example and create/update its dictionary
-npm run serve:vite     # Serve an existing Vite build through the shared Node server
-npm run start:vite     # Build and serve the Vite example
-npm run build:all      # Build the Webpack and Vite examples
-npm test               # Build both examples and run Node tests
-npm run test:vite      # Run Vite adapter tests
-npm run test:browser   # Build both examples and run both browser projects
-npm run test:package   # Check the package in separate Webpack and Vite consumers
+npm run build:vite         # Build the Vite example and create/update its dictionary
+npm run serve:vite         # Serve an existing Vite build through the shared Node server
+npm run start:vite         # Build and serve the Vite example
+npm run test:vite          # Run Vite adapter tests
+npm run test:browser:vite  # Build both examples and run the Vite browser project
+npm run build:all          # Build the Webpack and Vite examples
+npm test                   # Build both examples and run Node tests
+npm run test:browser       # Build both examples and run both browser projects
+npm run test:package       # Check the package in separate Webpack and Vite consumers
 ```
 
-`npm run test:browser` uses an installed Chrome browser by default. To select only the Vite browser project, use `npm run test:browser -- --project=vite`. Its test server runs on port `4175`.
+Browser tests use an installed Chrome browser by default. Run `npm run test:browser:vite` to select this example. It builds both examples for the two test servers, then runs only the Vite Playwright project. Its test server runs on port `4175`. `npm run test:browser` runs both projects.
 
 To use Playwright's Chromium, run these commands from the repository root in PowerShell:
 
 ```powershell
 npx playwright install chromium
 $env:PLAYWRIGHT_CHANNEL = 'chromium'
-npm run test:browser -- --project=vite
+npm run test:browser:vite
 ```
 
 `PLAYWRIGHT_CHANNEL` also accepts `chrome` and `msedge` when installed. Browser tests verify native CSS transfer, decoding, and application using the built Vite output.

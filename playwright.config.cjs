@@ -30,11 +30,11 @@ module.exports = defineConfig({
     metadata: { buildDir: path.join(__dirname, 'examples', `vue-${bundler}`, 'build') },
   })),
   webServer: ['webpack', 'vite'].map((bundler, index) => ({
-    command: 'node ../shared/server/index.cjs',
-    cwd: path.join(__dirname, 'examples', `vue-${bundler}`),
+    command: `npm run serve:${bundler}`,
+    cwd: __dirname,
     env: { PORT: String(4174 + index), HOST: 'localhost' },
     url: `http://localhost:${4174 + index}/`,
     reuseExistingServer: false,
-    timeout: 15_000,
+    timeout: 30_000,
   })),
 });

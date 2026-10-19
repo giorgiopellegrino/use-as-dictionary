@@ -3,9 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Webpack and Vite plugins for Compression Dictionary Transport with Shared Brotli dictionaries",
-  "main": "./src/webpack.cjs",
   "exports": {
-    ".": "./src/webpack.cjs",
     "./webpack": "./src/webpack.cjs",
     "./vite": "./src/vite.cjs"
   },
@@ -39,18 +37,20 @@
     "examples/vue-vite"
   ],
   "scripts": {
-    "build": "npm run build --workspace @use-as-dictionary/example-vue-webpack",
-    "build:watch": "npm run build:watch --workspace @use-as-dictionary/example-vue-webpack",
-    "serve": "npm run serve --workspace @use-as-dictionary/example-vue-webpack",
-    "start": "npm start --workspace @use-as-dictionary/example-vue-webpack",
+    "build:webpack": "npm run build --workspace @use-as-dictionary/example-vue-webpack",
     "build:vite": "npm run build --workspace @use-as-dictionary/example-vue-vite",
+    "build:all": "npm run build:webpack && npm run build:vite",
+    "build:watch:webpack": "npm run build:watch --workspace @use-as-dictionary/example-vue-webpack",
+    "serve:webpack": "npm run serve --workspace @use-as-dictionary/example-vue-webpack",
     "serve:vite": "npm run serve --workspace @use-as-dictionary/example-vue-vite",
+    "start:webpack": "npm start --workspace @use-as-dictionary/example-vue-webpack",
     "start:vite": "npm start --workspace @use-as-dictionary/example-vue-vite",
-    "build:all": "npm run build --workspaces",
     "test": "npm run build:all && node --test test/*.test.cjs",
-    "test:plugin": "node --test test/production-plugin.test.cjs",
+    "test:webpack": "node --test test/webpack-plugin.test.cjs",
     "test:vite": "node --test test/vite-plugin.test.cjs",
     "test:browser": "npm run build:all && playwright test",
+    "test:browser:webpack": "npm run test:browser -- --project=webpack",
+    "test:browser:vite": "npm run test:browser -- --project=vite",
     "test:package": "node scripts/check-package.cjs"
   },
   "dependencies": {

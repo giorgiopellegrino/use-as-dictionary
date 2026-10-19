@@ -1,13 +1,13 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import compressionDictionary from 'use-as-dictionary/vite';
+import CompressionDictionaryPlugin from 'use-as-dictionary/vite';
 
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
   plugins: [
     vue(),
-    compressionDictionary({
+    new CompressionDictionaryPlugin({
       test: /^dist\/styles\.[A-Za-z0-9_-]+\.css$/,
       dictionarySource: '.dictionary-cache/styles.dat',
       autoUpdate: { minSavings: 0.9 },

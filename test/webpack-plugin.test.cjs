@@ -9,7 +9,7 @@ const webpack = require('webpack');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const brotli = require('brotli-wasm-custom-dictionary');
-const CompressionDictionaryPlugin = require('use-as-dictionary');
+const CompressionDictionaryPlugin = require('use-as-dictionary/webpack');
 const MANIFEST_NAME = 'dist/compression-dictionary-manifest.json';
 
 function fixture(t, files = {}) {
@@ -135,6 +135,14 @@ function cssBuild(project, dictionaryPlugins = []) {
     },
   });
 }
+
+test('webpack: CommonJS and ESM expose the same class and require new', async () => {
+  assert.equal((await import('use-as-dictionary/webpack')).default, CompressionDictionaryPlugin);
+  assert.throws(() => CompressionDictionaryPlugin({ test: /\.css$/ }), TypeError);
+  const plugin = new CompressionDictionaryPlugin({ test: /\.css$/ });
+  assert.ok(plugin instanceof CompressionDictionaryPlugin);
+  assert.equal(typeof plugin.apply, 'function');
+});
 
 test('production: emits dictionary, DCB and manifest additions for the final minified, hashed CSS', async (t) => {
   const project = fixture(t, {
@@ -639,7 +647,7 @@ test('production: automatic dictionaries survive clean output and a fresh build 
   `;
   execFileSync(process.execPath, [
     '-e', script, project.directory, require.resolve('webpack'),
-    require.resolve('use-as-dictionary'),
+    require.resolve('use-as-dictionary/webpack'),
   ], { timeout: 30000, windowsHide: true });
   const outputPath = path.join(project.directory, 'build');
   const assets = new Map([dictionaryName, 'app.css.dcb', MANIFEST_NAME].map((name) => [

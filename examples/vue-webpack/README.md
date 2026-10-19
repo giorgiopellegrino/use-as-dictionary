@@ -1,6 +1,6 @@
 # Vue + Webpack example
 
-This example uses [`CompressionDictionaryPlugin`](../../README.md) to compress a Vue application's CSS with Compression Dictionary Transport. It imports the plugin as `require('use-as-dictionary/webpack')` through the repository's npm workspace dependency.
+This example uses [`CompressionDictionaryPlugin`](../../README.md) to compress a Vue application's CSS with Compression Dictionary Transport. It imports the class as `require('use-as-dictionary/webpack')` through the repository's npm workspace dependency.
 
 The build emits dictionary assets and a manifest. The [shared HTTP server](../shared/server/index.cjs) uses those assets for dictionary discovery, encoding negotiation, and standard Brotli/gzip fallback responses. This example and the [Vite example](../vue-vite/README.md) use the same Vue interface and server.
 
@@ -10,10 +10,10 @@ Use Node.js **22.12 or later**. From the repository root:
 
 ```sh
 npm ci
-npm start
+npm run start:webpack
 ```
 
-Open **http://localhost:8080** in a browser supporting Compression Dictionary Transport. The page also works with fallback compression when DCB is unavailable. `npm start` builds the example and starts its server.
+Open **http://localhost:8080** in a browser supporting Compression Dictionary Transport. The page also works with fallback compression when DCB is unavailable. `npm run start:webpack` builds the example and starts its server.
 
 The example is the `@use-as-dictionary/example-vue-webpack` workspace. Root scripts delegate build and server commands to it. For example, from the root:
 
@@ -106,28 +106,29 @@ The browser negotiates and decodes the response natively. If it has not register
 Run these from the repository root:
 
 ```sh
-npm run build          # Build the Webpack example and create/update its dictionary
-npm run build:watch    # Watch example sources and rebuild with Webpack
-npm run serve          # Serve the existing Webpack build
-npm start              # Build and serve the Webpack example
-npm test               # Build both examples and run Node tests
-npm run test:plugin    # Run Webpack adapter tests
-npm run test:browser   # Build both examples and run both browser projects
-npm run test:package   # Check the package in separate Webpack and Vite consumers
+npm run build:webpack         # Build the Webpack example and create/update its dictionary
+npm run build:watch:webpack   # Watch example sources and rebuild with Webpack
+npm run serve:webpack         # Serve the existing Webpack build
+npm run start:webpack         # Build and serve the Webpack example
+npm run test:webpack          # Run Webpack adapter tests
+npm run test:browser:webpack  # Build both examples and run the Webpack browser project
+npm test                      # Build both examples and run Node tests
+npm run test:browser          # Build both examples and run both browser projects
+npm run test:package          # Check the package in separate Webpack and Vite consumers
 ```
 
-For development, run `npm run build:watch` and `npm run serve` in separate terminals. Refresh the page after a build finishes. Local output replacement is not atomic, so requests during a rebuild may fail.
+For development, run `npm run build:watch:webpack` and `npm run serve:webpack` from the root in separate terminals. Refresh the page after a build finishes. Local output replacement is not atomic, so requests during a rebuild may fail.
 
 ### Browser tests
 
-The Node tests verify the DCB format, manifest, discovery, and HTTP negotiation. Browser tests additionally verify native CSS decoding and application for the Webpack and Vite builds. To select just this example, run `npm run test:browser -- --project=webpack` from the root.
+The Node tests verify the DCB format, manifest, discovery, and HTTP negotiation. Browser tests additionally verify native CSS decoding and application for the Webpack and Vite builds. Run `npm run test:browser:webpack` from the root to select this example. It builds both examples for the two test servers, then runs only the Webpack Playwright project. `npm run test:browser` runs both projects.
 
-`npm run test:browser` uses an installed Chrome browser by default. To use Playwright's Chromium, run these commands from the repository root in PowerShell:
+Browser tests use an installed Chrome browser by default. To use Playwright's Chromium, run these commands from the repository root in PowerShell:
 
 ```powershell
 npx playwright install chromium
 $env:PLAYWRIGHT_CHANNEL = 'chromium'
-npm run test:browser
+npm run test:browser:webpack
 ```
 
 `PLAYWRIGHT_CHANNEL` also accepts `chrome` and `msedge` when those browsers are installed. The Webpack browser test server runs on port `4174`; the Vite project uses port `4175`.

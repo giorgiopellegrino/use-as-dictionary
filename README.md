@@ -43,9 +43,10 @@ The package includes both adapters, their shared compression core, and the docum
 
 | Import | Export |
 | --- | --- |
-| `use-as-dictionary/webpack` | The `CompressionDictionaryPlugin` Webpack constructor. |
-| `use-as-dictionary/vite` | The `compressionDictionary(options)` Vite plugin factory. |
-| `use-as-dictionary` | Alias for the Webpack constructor, retained for compatibility. |
+| `use-as-dictionary/webpack` | The `CompressionDictionaryPlugin` class for Webpack. |
+| `use-as-dictionary/vite` | The `CompressionDictionaryPlugin` class for Vite. |
+
+Import the class for your bundler and create a plugin with `new CompressionDictionaryPlugin(options)`.
 
 ## Webpack configuration
 
@@ -85,11 +86,11 @@ Import the Vite adapter and add it to your `vite.config.mjs`:
 
 ```js
 import { defineConfig } from 'vite';
-import compressionDictionary from 'use-as-dictionary/vite';
+import CompressionDictionaryPlugin from 'use-as-dictionary/vite';
 
 export default defineConfig({
   plugins: [
-    compressionDictionary({
+    new CompressionDictionaryPlugin({
       test: /\.css$/,
       dictionarySource: '.dictionary-cache/styles.dat',
       autoUpdate: { minSavings: 0.9 },
@@ -103,7 +104,7 @@ export default defineConfig({
 
 This configuration combines CSS into one asset so the automatic dictionary has one resource to track. Adapt the selector if your build emits different assets. The adapter runs during `vite build`, processes final assets in `generateBundle`, and preserves their original filenames. Each selected resource gets a `.dcb` representation beside it; the dictionary and manifest have the same format as the Webpack output.
 
-Place every `compressionDictionary(...)` instance after plugins that modify final assets in `generateBundle`. With `autoUpdate`, the last adapter instance must also follow other plugins with `writeBundle` hooks using `order: 'post'`; incompatible ordering fails the build. Move any such plugins from `output.plugins` into Vite's `plugins` array before the adapter.
+Place every `CompressionDictionaryPlugin` instance after plugins that modify final assets in `generateBundle`. With `autoUpdate`, the last adapter instance must also follow other plugins with `writeBundle` hooks using `order: 'post'`; incompatible ordering fails the build. Move any such plugins from `output.plugins` into Vite's `plugins` array before the adapter.
 
 The adapter applies only to builds. Vite's development server does not generate dictionaries or implement discovery and HTTP negotiation. The [Vite example](examples/vue-vite/README.md) builds the app and serves it through the shared Node server. Its [vite.config.js](examples/vue-vite/vite.config.js) places the CSS and JavaScript under `dist/` for that server.
 
@@ -145,7 +146,7 @@ new CompressionDictionaryPlugin({
 
 In this mode, the plugin emits the dictionary, DCB representation, and manifest. Your build or server must make the original input available for fallback responses.
 
-For Vite, pass the same options to `compressionDictionary(...)` instead of constructing the Webpack plugin.
+The same constructor options work with either bundler entry point.
 
 ## Persistent dictionaries
 
@@ -206,25 +207,28 @@ Run commands from the repository root:
 
 ```sh
 npm ci
-npm start
 ```
 
-Open **http://localhost:8080**. `npm start` builds and serves the Webpack example. To run the Vite example instead, use `npm run start:vite`. Both use the same port by default and import the plugin through their local workspace dependency.
+Run `npm run start:webpack` or `npm run start:vite`, then open **http://localhost:8080**. Both examples use the same port by default and import the plugin through their local workspace dependency.
+
+| Action | Webpack | Vite |
+| --- | --- | --- |
+| Build the example and create or update its dictionary | `npm run build:webpack` | `npm run build:vite` |
+| Serve an existing build through the shared Node server | `npm run serve:webpack` | `npm run serve:vite` |
+| Build and serve the example | `npm run start:webpack` | `npm run start:vite` |
+| Run the adapter's Node tests | `npm run test:webpack` | `npm run test:vite` |
+| Run the example's browser tests | `npm run test:browser:webpack` | `npm run test:browser:vite` |
+| Rebuild when source files change | `npm run build:watch:webpack` | Unsupported with `autoUpdate` |
+
+Each browser command in this table builds both examples for the two test servers, then runs only the selected Playwright project. Browser tests require Chrome by default; see the [example instructions](examples/vue-webpack/README.md#browser-tests).
+
+These commands cover both bundlers:
 
 | Command | Purpose |
 | --- | --- |
-| `npm run build` | Build the Webpack example and create or update its dictionary. |
-| `npm run build:watch` | Rebuild the Webpack example when source files change. |
-| `npm run serve` | Serve an existing Webpack example build. |
-| `npm start` | Build and serve the Webpack example. |
-| `npm run build:vite` | Build the Vite example and create or update its dictionary. |
-| `npm run serve:vite` | Serve an existing Vite example build through the shared Node server. |
-| `npm run start:vite` | Build and serve the Vite example. |
 | `npm run build:all` | Build both examples. |
 | `npm test` | Build both examples and run the Node test suite. |
-| `npm run test:plugin` | Run the Webpack adapter's Node tests. |
-| `npm run test:vite` | Run the Vite adapter's Node tests. |
-| `npm run test:browser` | Build both examples and test native browser transfer and CSS decoding in two Playwright projects. Requires Chrome by default; see the [example instructions](examples/vue-webpack/README.md#browser-tests). |
+| `npm run test:browser` | Build both examples and test native browser transfer and CSS decoding in both Playwright projects. |
 | `npm run test:package` | Install the tarball in separate external Webpack and Vite consumers, check imports, and build and decode DCB representations. Each consumer installs only its own bundler. |
 
 ```text

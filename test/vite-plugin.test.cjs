@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const brotli = require('brotli-wasm-custom-dictionary');
-const compressionDictionary = require('use-as-dictionary/vite');
+const CompressionDictionaryPlugin = require('use-as-dictionary/vite');
 
 const MANIFEST_NAME = 'dist/compression-dictionary-manifest.json';
 const hash = (bytes) => createHash('sha256').update(bytes).digest();
@@ -86,13 +86,19 @@ function assertDcb(assets, filename, expected, dictionaryName = dictionaryNames(
   assert.deepEqual(Buffer.from(brotli.decompress(dcb.subarray(36), { customDictionary: dictionary })), expected);
 }
 
+test('vite: CommonJS and ESM expose the same class and require new', async () => {
+  assert.equal((await import('use-as-dictionary/vite')).default, CompressionDictionaryPlugin);
+  assert.throws(() => CompressionDictionaryPlugin({ test: /\.css$/ }), TypeError);
+  assert.ok(new CompressionDictionaryPlugin({ test: /\.css$/ }) instanceof CompressionDictionaryPlugin);
+});
+
 test('vite: compresses final minified CSS and JS with final hashed names, preserving every original asset', async (t) => {
   const project = fixture(t, {
     'main.js': 'import "./styles.css"; document.body.dataset.message = "hello from the final chunk";',
     'styles.css': '/* source formatting */\n.card { color: #ffffff; margin: 0px 0px 0px 0px; }\n',
   });
   const baseline = await project.build();
-  const assets = await project.build([compressionDictionary({ test: /\.(css|js)$/ })]);
+  const assets = await project.build([new CompressionDictionaryPlugin({ test: /\.(css|js)$/ })]);
   const cssName = [...baseline.keys()].find((name) => name.endsWith('.css'));
   assert.match(cssName, /^assets\/index-[\w-]+\.css$/);
   assert.ok(!assets.get(cssName).toString().includes('source formatting'));
@@ -114,8 +120,8 @@ test('vite: multiple instances share one sorted manifest and deduplicate identic
   const project = fixture(t, { 'one/shared.css': snapshot, 'two/shared.dat': snapshot });
   const assets = await project.build([
     emitAssets({ 'first/data.bin': first, 'second/data.bin': second, 'untouched.bin': 'unchanged' }),
-    compressionDictionary({ test: 'first/data.bin', dictionarySource: 'one/shared.css' }),
-    compressionDictionary({ test: 'second/data.bin', dictionarySource: 'two/shared.dat' }),
+    new CompressionDictionaryPlugin({ test: 'first/data.bin', dictionarySource: 'one/shared.css' }),
+    new CompressionDictionaryPlugin({ test: 'second/data.bin', dictionarySource: 'two/shared.dat' }),
   ]);
   assert.equal(dictionaryNames(assets).length, 1);
   assert.match(dictionaryNames(assets)[0], /^dictionaries\/shared\.[a-f0-9]{64}\.dat$/);
@@ -129,7 +135,7 @@ test('vite: external input supports custom output names and frozen dictionary by
   const content = Buffer.from('current resource '.repeat(300));
   const snapshot = Buffer.from('snapshot\r\n'.repeat(250));
   const project = fixture(t, { 'source/raw.bin': content, 'snapshots/fixed.dat': snapshot });
-  const assets = await project.build([compressionDictionary({
+  const assets = await project.build([new CompressionDictionaryPlugin({
     input: 'source/raw.bin', dictionarySource: 'snapshots/fixed.dat', dcbFilename: 'representations/current.dcb', quality: 4,
   })]);
   assert.deepEqual(assets.get(dictionaryNames(assets)[0]), snapshot);
@@ -143,7 +149,7 @@ test('vite: automatic dictionaries persist after successful writes, reuse and ro
   const second = Buffer.from('.second { display: grid; gap: 20px; }\n'.repeat(200));
   const project = fixture(t, { 'input.css': first });
   const dictionaryPath = path.join(project.directory, 'cache/styles.css');
-  const reuse = compressionDictionary({ input: 'input.css', dictionarySource: 'cache/styles.css', autoUpdate: { minSavings: 0 } });
+  const reuse = new CompressionDictionaryPlugin({ input: 'input.css', dictionarySource: 'cache/styles.css', autoUpdate: { minSavings: 0 } });
   const initial = await project.build([reuse]);
   assert.deepEqual(fs.readFileSync(dictionaryPath), first);
   assertDcb(initial, 'input.css.dcb', first);
@@ -152,7 +158,7 @@ test('vite: automatic dictionaries persist after successful writes, reuse and ro
   assert.deepEqual(dictionaryNames(reused), dictionaryNames(initial));
   assert.deepEqual(fs.readFileSync(dictionaryPath), first);
   assertDcb(reused, 'input.css.dcb', second);
-  const rotated = await project.build([compressionDictionary({
+  const rotated = await project.build([new CompressionDictionaryPlugin({
     input: 'input.css', dictionarySource: 'cache/styles.css', autoUpdate: { minSavings: 1 },
   })]);
   assert.notDeepEqual(dictionaryNames(rotated), dictionaryNames(initial));
@@ -165,7 +171,7 @@ test('vite: build.write false returns valid generated assets without creating or
   const current = Buffer.from('new resource '.repeat(250));
   const project = fixture(t, { 'input.txt': current, 'cache/existing.txt': initial });
   for (const filename of ['missing.txt', 'existing.txt']) {
-    const assets = await project.build([compressionDictionary({
+    const assets = await project.build([new CompressionDictionaryPlugin({
       input: 'input.txt', dictionarySource: `cache/${filename}`, autoUpdate: { minSavings: 1 },
     })], { build: { write: false } });
     assertDcb(assets, 'input.txt.dcb', current);
@@ -179,7 +185,7 @@ for (const stage of ['generateBundle', 'writeBundle']) {
   test(`vite: failure in another ${stage} hook does not persist automatic state`, async (t) => {
     const initial = Buffer.from('old dictionary '.repeat(150));
     const project = fixture(t, { 'input.txt': 'new resource '.repeat(250), 'cache/current.txt': initial });
-    const plugin = compressionDictionary({ input: 'input.txt', dictionarySource: 'cache/current.txt', autoUpdate: { minSavings: 1 } });
+    const plugin = new CompressionDictionaryPlugin({ input: 'input.txt', dictionarySource: 'cache/current.txt', autoUpdate: { minSavings: 1 } });
     const failure = { name: 'hook-failure', enforce: 'post', [stage]: { order: 'post', sequential: true, handler() { throw new Error(`${stage} failure`); } } };
     await assert.rejects(project.build(stage === 'writeBundle' ? [failure, plugin] : [plugin, failure]), new RegExp(`${stage} failure`));
     assert.deepEqual(fs.readFileSync(path.join(project.directory, 'cache/current.txt')), initial);
@@ -204,7 +210,7 @@ test('vite: output write failure does not create an automatic dictionary', async
     },
   };
   await assert.rejects(project.build([
-    compressionDictionary({ input: 'input.txt', dictionarySource: 'cache/new.txt', autoUpdate: {} }), blocker,
+    new CompressionDictionaryPlugin({ input: 'input.txt', dictionarySource: 'cache/new.txt', autoUpdate: {} }), blocker,
   ]));
   assert.equal(fs.existsSync(path.join(project.directory, 'cache/new.txt')), false);
 });
@@ -212,7 +218,7 @@ test('vite: output write failure does not create an automatic dictionary', async
 test('vite: automatic state rejects a later post writeBundle hook with an ordering instruction', async (t) => {
   const project = fixture(t, { 'input.txt': 'resource bytes' });
   await assert.rejects(project.build([
-    compressionDictionary({ input: 'input.txt', dictionarySource: 'cache/current.txt', autoUpdate: {} }),
+    new CompressionDictionaryPlugin({ input: 'input.txt', dictionarySource: 'cache/current.txt', autoUpdate: {} }),
     { name: 'late-write-hook', enforce: 'post', writeBundle: { order: 'post', handler() {} } },
   ]), /move it after that plugin/);
   assert.equal(fs.existsSync(path.join(project.directory, 'cache/current.txt')), false);
@@ -222,7 +228,7 @@ test('vite: stateful regex selectors reset for each asset and each build', async
   const project = fixture(t);
   const selector = /\.txt$/g;
   selector.lastIndex = 999;
-  const plugin = compressionDictionary({ test: selector });
+  const plugin = new CompressionDictionaryPlugin({ test: selector });
   for (const contents of [
     { 'a.txt': 'first content', 'b.txt': 'second content' },
     { 'c.txt': 'third content', 'd.txt': 'fourth content' },
@@ -240,56 +246,56 @@ test('vite: stateful regex selectors reset for each asset and each build', async
 test('vite: overlapping selectors, existing DCB files and reserved manifest paths reject collisions', async (t) => {
   const project = fixture(t, { 'input.txt': 'input content' });
   await assert.rejects(project.build([
-    emitAssets({ 'a.txt': 'resource' }), compressionDictionary({ test: 'a.txt' }), compressionDictionary({ test: /\.txt$/ }),
+    emitAssets({ 'a.txt': 'resource' }), new CompressionDictionaryPlugin({ test: 'a.txt' }), new CompressionDictionaryPlugin({ test: /\.txt$/ }),
   ]), /output collision at a\.txt\.dcb/);
   await assert.rejects(project.build([
-    emitAssets({ 'a.txt': 'resource', 'a.txt.dcb': 'existing' }), compressionDictionary({ test: 'a.txt' }),
+    emitAssets({ 'a.txt': 'resource', 'a.txt.dcb': 'existing' }), new CompressionDictionaryPlugin({ test: 'a.txt' }),
   ]), /output collision at a\.txt\.dcb/);
   await assert.rejects(project.build([
-    emitAssets({ 'a.txt': 'resource', [MANIFEST_NAME]: '{}' }), compressionDictionary({ test: 'a.txt' }),
+    emitAssets({ 'a.txt': 'resource', [MANIFEST_NAME]: '{}' }), new CompressionDictionaryPlugin({ test: 'a.txt' }),
   ]), /output collision at dist\/compression-dictionary-manifest\.json/);
   await assert.rejects(project.build([
-    compressionDictionary({ input: 'input.txt', dcbFilename: MANIFEST_NAME }),
+    new CompressionDictionaryPlugin({ input: 'input.txt', dcbFilename: MANIFEST_NAME }),
   ]), /reserved for the dictionary manifest/);
 });
 
 test('vite: dictionary outputs must not overwrite copied public files', async (t) => {
   const project = fixture(t, { 'input.txt': 'resource bytes', 'public/input.txt.dcb': 'public content' });
-  await assert.rejects(project.build([compressionDictionary({ input: 'input.txt' })]), /already exists in publicDir/);
+  await assert.rejects(project.build([new CompressionDictionaryPlugin({ input: 'input.txt' })]), /already exists in publicDir/);
 });
 
 test('vite: automatic source paths cannot overlap inputs, fixed dictionaries, other writers or output directories', async (t) => {
   const project = fixture(t, { 'input.txt': 'resource bytes', 'other.txt': 'different bytes' });
-  const automatic = (source) => compressionDictionary({ input: 'input.txt', dictionarySource: source, autoUpdate: {} });
+  const automatic = (source) => new CompressionDictionaryPlugin({ input: 'input.txt', dictionarySource: source, autoUpdate: {} });
   await assert.rejects(project.build([automatic('input.txt')]), /cannot overwrite an input/);
   await assert.rejects(project.build([
     automatic('cache/shared.txt'),
-    compressionDictionary({ input: 'other.txt', dictionarySource: 'cache/shared.txt' }),
+    new CompressionDictionaryPlugin({ input: 'other.txt', dictionarySource: 'cache/shared.txt' }),
   ]), /cannot overwrite an input or a fixed dictionarySource/);
   await assert.rejects(project.build([
     automatic('cache/shared.txt'),
-    compressionDictionary({ input: 'other.txt', dictionarySource: 'cache/shared.txt', autoUpdate: {} }),
+    new CompressionDictionaryPlugin({ input: 'other.txt', dictionarySource: 'cache/shared.txt', autoUpdate: {} }),
   ]), /distinct dictionarySource/);
   await assert.rejects(project.build([automatic('build/cache.txt')]), /outside build\.outDir/);
 });
 
 test('vite: missing selectors, unreadable inputs and automatic multi-asset selection fail without state changes', async (t) => {
   const project = fixture(t);
-  await assert.rejects(project.build([compressionDictionary({ test: 'missing.css' })]), /no emitted assets match/);
-  await assert.rejects(project.build([compressionDictionary({ input: 'missing.css' })]), /cannot read input/);
+  await assert.rejects(project.build([new CompressionDictionaryPlugin({ test: 'missing.css' })]), /no emitted assets match/);
+  await assert.rejects(project.build([new CompressionDictionaryPlugin({ input: 'missing.css' })]), /cannot read input/);
   await assert.rejects(project.build([
     emitAssets({ 'a.css': 'a {}', 'b.css': 'b {}' }),
-    compressionDictionary({ test: /\.css$/, dictionarySource: 'cache/styles.css', autoUpdate: {} }),
+    new CompressionDictionaryPlugin({ test: /\.css$/, dictionarySource: 'cache/styles.css', autoUpdate: {} }),
   ]), /exactly one asset/);
   assert.equal(fs.existsSync(path.join(project.directory, 'cache/styles.css')), false);
 });
 
 test('vite: unsupported multiple outputs and automatic watch builds reject before writing', async (t) => {
   const project = fixture(t, { 'input.txt': 'resource bytes' });
-  await assert.rejects(project.build([compressionDictionary({ input: 'input.txt' })], {
+  await assert.rejects(project.build([new CompressionDictionaryPlugin({ input: 'input.txt' })], {
     build: { rolldownOptions: { output: [{ format: 'es' }, { format: 'cjs' }] } },
   }), /exactly one output/);
-  await assert.rejects(project.build([compressionDictionary({ input: 'input.txt', dictionarySource: 'cache/styles.txt', autoUpdate: {} })], {
+  await assert.rejects(project.build([new CompressionDictionaryPlugin({ input: 'input.txt', dictionarySource: 'cache/styles.txt', autoUpdate: {} })], {
     build: { watch: {} },
   }), /build\.watch is not supported with autoUpdate/);
   assert.equal(fs.existsSync(path.join(project.directory, 'cache/styles.txt')), false);
@@ -298,7 +304,7 @@ test('vite: unsupported multiple outputs and automatic watch builds reject befor
 test('vite: automatic state rejects promised post write hooks in output.plugins before writing', async (t) => {
   const project = fixture(t, { 'input.txt': 'resource bytes' });
   await assert.rejects(project.build([
-    compressionDictionary({ input: 'input.txt', dictionarySource: 'cache/styles.txt', autoUpdate: {} }),
+    new CompressionDictionaryPlugin({ input: 'input.txt', dictionarySource: 'cache/styles.txt', autoUpdate: {} }),
   ], { build: { rolldownOptions: { output: {
     plugins: Promise.resolve([[{ name: 'output-post-hook', writeBundle: { order: 'post', handler() {} } }]]),
   } } } }), /autoUpdate does not support post writeBundle hooks in output\.plugins/);

@@ -51,22 +51,20 @@ async function checkWebpackPackage() {
   const { createRequire } = require('node:module');
   const path = require('node:path');
 
-  const entry = require.resolve('use-as-dictionary');
+  const entry = require.resolve('use-as-dictionary/webpack');
   assertInstalled(entry);
-  assertInstalled(require.resolve('use-as-dictionary/webpack'));
+  assert.throws(() => require.resolve('use-as-dictionary'), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' },
+    'Consumers must select an explicit bundler entry');
   assertInstalled(require.resolve('webpack'));
   assert.throws(() => require.resolve('vite'), { code: 'MODULE_NOT_FOUND' },
     'A Webpack consumer must not need Vite installed');
   const pluginRequire = createRequire(entry);
   assertInstalled(pluginRequire.resolve('brotli-wasm-custom-dictionary'));
 
-  const CompressionDictionaryPlugin = require('use-as-dictionary');
-  assert.equal(typeof CompressionDictionaryPlugin, 'function');
-  assert.equal((await import('use-as-dictionary')).default, CompressionDictionaryPlugin,
-    'CommonJS and ESM consumers must receive the same plugin');
-  assert.equal(require('use-as-dictionary/webpack'), CompressionDictionaryPlugin,
-    'The explicit Webpack entry must preserve the default export');
-  assert.equal((await import('use-as-dictionary/webpack')).default, CompressionDictionaryPlugin);
+  const CompressionDictionaryPlugin = require('use-as-dictionary/webpack');
+  assert.equal((await import('use-as-dictionary/webpack')).default, CompressionDictionaryPlugin,
+    'CommonJS and ESM consumers must receive the same Webpack class');
+  assert.throws(() => CompressionDictionaryPlugin({ input: './styles.css' }), TypeError);
   const webpack = require('webpack');
   const brotli = pluginRequire('brotli-wasm-custom-dictionary');
   const content = Buffer.from('.card{display:grid;gap:1rem;color:#123456;padding:1rem}\n'.repeat(32));
@@ -92,7 +90,7 @@ async function checkWebpackPackage() {
   } finally {
     await new Promise((resolve, reject) => compiler.close((error) => error ? reject(error) : resolve()));
   }
-  console.log(`Installed package: CommonJS, ESM, Webpack ${webpack.version}, dictionary manifest and DCB decoding passed.`);
+  console.log(`Installed package: CommonJS, ESM, Webpack ${webpack.version}, constructor, dictionary manifest and DCB decoding passed.`);
 }
 
 async function checkVitePackage() {
@@ -110,10 +108,10 @@ async function checkVitePackage() {
     'The Vite adapter must not pull Webpack into the plugin package');
   assertInstalled(pluginRequire.resolve('brotli-wasm-custom-dictionary'));
 
-  const compressionDictionary = require('use-as-dictionary/vite');
-  assert.equal(typeof compressionDictionary, 'function');
-  assert.equal((await import('use-as-dictionary/vite')).default, compressionDictionary,
-    'CommonJS and ESM consumers must receive the same Vite factory');
+  const CompressionDictionaryPlugin = require('use-as-dictionary/vite');
+  assert.equal((await import('use-as-dictionary/vite')).default, CompressionDictionaryPlugin,
+    'CommonJS and ESM consumers must receive the same Vite class');
+  assert.throws(() => CompressionDictionaryPlugin({ test: /\.css$/ }), TypeError);
   const vite = await import('vite');
   const brotli = pluginRequire('brotli-wasm-custom-dictionary');
   const input = Buffer.from('/* package fixture source */\n.card {\n  color: #ffffff;\n  padding: 0px 0px 0px 0px;\n}\n');
@@ -127,7 +125,7 @@ async function checkVitePackage() {
     root: __dirname,
     logLevel: 'error',
     build: { outDir: outputPath, cssMinify: true },
-    plugins: [compressionDictionary({ test: /\.css$/ })],
+    plugins: [new CompressionDictionaryPlugin({ test: /\.css$/ })],
   });
   const outputs = (Array.isArray(result) ? result : [result]).flatMap(({ output }) => output);
   const cssAssets = outputs.filter(({ type, fileName }) => type === 'asset' && fileName.endsWith('.css'));
