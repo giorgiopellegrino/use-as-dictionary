@@ -9,7 +9,7 @@ const webpack = require('webpack');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const brotli = require('brotli-wasm-custom-dictionary');
-const CompressionDictionaryPlugin = require('../webpack/CompressionDictionaryPlugin.cjs');
+const CompressionDictionaryPlugin = require('use-as-dictionary');
 const MANIFEST_NAME = 'dist/compression-dictionary-manifest.json';
 
 function fixture(t, files = {}) {
@@ -639,7 +639,7 @@ test('production: automatic dictionaries survive clean output and a fresh build 
   `;
   execFileSync(process.execPath, [
     '-e', script, project.directory, require.resolve('webpack'),
-    require.resolve('../webpack/CompressionDictionaryPlugin.cjs'),
+    require.resolve('use-as-dictionary'),
   ], { timeout: 30000, windowsHide: true });
   const outputPath = path.join(project.directory, 'build');
   const assets = new Map([dictionaryName, 'app.css.dcb', MANIFEST_NAME].map((name) => [

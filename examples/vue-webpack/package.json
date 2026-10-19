@@ -1,0 +1,29 @@
+{
+  "name": "@use-as-dictionary/example-vue-webpack",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vue and Webpack example for use-as-dictionary with HTTP dictionary negotiation",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "webpack --mode production",
+    "build:watch": "webpack --mode production --watch",
+    "serve": "node server/index.cjs",
+    "start": "npm run build && npm run serve"
+  },
+  "dependencies": {
+    "use-as-dictionary": "file:../..",
+    "vue": "3.5.43"
+  },
+  "devDependencies": {
+    "css-loader": "7.1.5",
+    "css-minimizer-webpack-plugin": "8.0.0",
+    "html-webpack-plugin": "5.6.8",
+    "mini-css-extract-plugin": "2.10.2",
+    "vue-loader": "17.4.2",
+    "webpack": "5.111.1",
+    "webpack-cli": "7.2.3"
+  }
+}

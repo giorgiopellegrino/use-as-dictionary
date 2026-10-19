@@ -7,9 +7,9 @@ const http = require('node:http');
 const { createHash } = require('node:crypto');
 const { brotliDecompressSync, gunzipSync } = require('node:zlib');
 const brotli = require('brotli-wasm-custom-dictionary');
-const { createDemoServer } = require('../server/index.cjs');
+const { createDemoServer } = require('../examples/vue-webpack/server/index.cjs');
 
-const rootDir = path.resolve(__dirname, '../build');
+const rootDir = path.resolve(__dirname, '../examples/vue-webpack/build');
 const manifestUrl = '/dist/compression-dictionary-manifest.json';
 const productionManifest = JSON.parse(fs.readFileSync(path.join(rootDir, manifestUrl.slice(1)), 'utf8'));
 const logger = { info() {}, error() {} };

@@ -27,7 +27,7 @@ module.exports = defineConfig({
   },
   webServer: {
     command: 'node server/index.cjs',
-    cwd: __dirname,
+    cwd: path.join(__dirname, 'examples/vue-webpack'),
     env: { PORT: '4174', HOST: 'localhost' },
     url: 'http://localhost:4174/',
     reuseExistingServer: false,

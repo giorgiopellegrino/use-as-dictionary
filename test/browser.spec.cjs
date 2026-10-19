@@ -43,7 +43,7 @@ test('Il browser negozia DCB, decodifica il CSS e applica il foglio di stile', a
       const stylesheet = head.querySelector('link[rel="stylesheet"]');
       return Boolean(dictionaryLink.compareDocumentPosition(stylesheet) & Node.DOCUMENT_POSITION_FOLLOWING);
     })).toBe(true);
-    const sourceCss = await readFile(path.join(__dirname, '..', 'build', resource.url.slice(1)), 'utf8');
+    const sourceCss = await readFile(path.join(__dirname, '..', 'examples', 'vue-webpack', 'build', resource.url.slice(1)), 'utf8');
 
     // Lettura completa: Chrome registra il dizionario solo dopo averne ricevuto il corpo.
     const dictionaryBytes = await page.evaluate(async (dictionaryUrl) => {

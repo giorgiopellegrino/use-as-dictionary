@@ -4,9 +4,10 @@ const { VueLoaderPlugin } = require("vue-loader");
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const CssMinimizerPlugin = require("css-minimizer-webpack-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
-const CompressionDictionaryPlugin = require("./webpack/CompressionDictionaryPlugin.cjs");
+const CompressionDictionaryPlugin = require("use-as-dictionary");
 
 module.exports = {
+  context: __dirname,
   entry: "./src/main.js",
   output: {
     path: path.resolve(__dirname, "build"),
