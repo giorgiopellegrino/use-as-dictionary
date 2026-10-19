@@ -163,7 +163,7 @@ function main() {
     const files = archive.files.map(({ path: filename }) => filename);
     const required = [
       'LICENSE', 'README.md', 'package.json',
-      'src/core.cjs', 'src/CompressionDictionaryPlugin.cjs', 'src/vite.cjs',
+      'src/core.cjs', 'src/webpack.cjs', 'src/vite.cjs',
     ];
     for (const filename of required) assert.ok(files.includes(filename), `Missing package file: ${filename}`);
     for (const filename of files) {

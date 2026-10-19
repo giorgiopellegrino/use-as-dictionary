@@ -1,6 +1,6 @@
 # Vue + Webpack example
 
-This example uses [`CompressionDictionaryPlugin`](../../README.md) to compress a Vue application's CSS with Compression Dictionary Transport. It imports the plugin as `require('use-as-dictionary')` through the repository's npm workspace dependency.
+This example uses [`CompressionDictionaryPlugin`](../../README.md) to compress a Vue application's CSS with Compression Dictionary Transport. It imports the plugin as `require('use-as-dictionary/webpack')` through the repository's npm workspace dependency.
 
 The build emits dictionary assets and a manifest. The [shared HTTP server](../shared/server/index.cjs) uses those assets for dictionary discovery, encoding negotiation, and standard Brotli/gzip fallback responses. This example and the [Vite example](../vue-vite/README.md) use the same Vue interface and server.
 
@@ -32,7 +32,7 @@ The Vue component and stylesheet live in [examples/shared/ui](../shared/ui). Thi
 
 ```js
 const path = require('node:path');
-const CompressionDictionaryPlugin = require('use-as-dictionary');
+const CompressionDictionaryPlugin = require('use-as-dictionary/webpack');
 
 new CompressionDictionaryPlugin({
   test: /^dist\/styles\.[a-f0-9]+\.css$/,

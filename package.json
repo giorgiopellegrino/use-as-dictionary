@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "description": "Webpack and Vite plugins for Compression Dictionary Transport with Shared Brotli dictionaries",
-  "main": "./src/CompressionDictionaryPlugin.cjs",
+  "main": "./src/webpack.cjs",
   "exports": {
-    ".": "./src/CompressionDictionaryPlugin.cjs",
-    "./webpack": "./src/CompressionDictionaryPlugin.cjs",
+    ".": "./src/webpack.cjs",
+    "./webpack": "./src/webpack.cjs",
     "./vite": "./src/vite.cjs"
   },
   "files": [

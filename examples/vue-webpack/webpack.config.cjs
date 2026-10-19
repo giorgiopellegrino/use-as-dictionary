@@ -4,7 +4,7 @@ const { VueLoaderPlugin } = require("vue-loader");
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const CssMinimizerPlugin = require("css-minimizer-webpack-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
-const CompressionDictionaryPlugin = require("use-as-dictionary");
+const CompressionDictionaryPlugin = require("use-as-dictionary/webpack");
 
 module.exports = {
   context: __dirname,

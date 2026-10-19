@@ -43,9 +43,9 @@ The package includes both adapters, their shared compression core, and the docum
 
 | Import | Export |
 | --- | --- |
-| `use-as-dictionary` | The `CompressionDictionaryPlugin` Webpack constructor. |
-| `use-as-dictionary/webpack` | The same Webpack constructor. |
+| `use-as-dictionary/webpack` | The `CompressionDictionaryPlugin` Webpack constructor. |
 | `use-as-dictionary/vite` | The `compressionDictionary(options)` Vite plugin factory. |
+| `use-as-dictionary` | Alias for the Webpack constructor, retained for compatibility. |
 
 ## Webpack configuration
 
@@ -53,7 +53,7 @@ Add the plugin to your existing Webpack configuration. This example assumes your
 
 ```js
 const path = require('node:path');
-const CompressionDictionaryPlugin = require('use-as-dictionary');
+const CompressionDictionaryPlugin = require('use-as-dictionary/webpack');
 
 // Add this instance to the plugins array in webpack.config.cjs.
 new CompressionDictionaryPlugin({
@@ -231,7 +231,7 @@ Open **http://localhost:8080**. `npm start` builds and serves the Webpack exampl
 use-as-dictionary/
 ├── src/
 │   ├── core.cjs
-│   ├── CompressionDictionaryPlugin.cjs
+│   ├── webpack.cjs
 │   └── vite.cjs
 ├── examples/
 │   ├── shared/             # Vue interface and HTTP server
