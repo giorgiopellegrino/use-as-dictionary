@@ -1,6 +1,6 @@
 {
   "name": "use-as-dictionary",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": false,
   "description": "Webpack and Vite plugins for Compression Dictionary Transport with Shared Brotli dictionaries",
   "exports": {
@@ -61,8 +61,12 @@
     "vite": "^8.0.0"
   },
   "peerDependenciesMeta": {
-    "webpack": { "optional": true },
-    "vite": { "optional": true }
+    "webpack": {
+      "optional": true
+    },
+    "vite": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
