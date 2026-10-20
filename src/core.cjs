@@ -6,7 +6,7 @@ const brotli = require('brotli-wasm-custom-dictionary');
 const PLUGIN_NAME = 'CompressionDictionaryPlugin';
 const MAGIC = Buffer.from([0xff, 0x44, 0x43, 0x42]);
 const MAX_DICTIONARY_BYTES = 2 ** 22 - 16; // Window used by this WASM encoder.
-const MANIFEST_FILENAME = 'dist/compression-dictionary-manifest.json';
+const MANIFEST_FILENAME = 'dictionaries/compression-dictionary-manifest.json';
 
 const pathKey = (filename) => process.platform === 'win32' ? filename.toLowerCase() : filename;
 
