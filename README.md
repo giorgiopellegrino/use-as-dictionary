@@ -12,23 +12,16 @@ The plugin works independently of Vue. The [Vue + Webpack](examples/vue-webpack/
 - Webpack **5** or Vite **8** in the consuming project.
 - A server or CDN configured to serve Compression Dictionary Transport responses; see [HTTP integration](#http-integration).
 
-The repository is prepared for local installation. It has not been published to the npm registry. To create an installable package, run these commands in a checkout:
+Install the plugin with the bundler your project uses. For Webpack:
 
 ```sh
-npm ci
-npm pack
-```
-
-Install the generated tarball with the bundler your project uses. For Webpack:
-
-```sh
-npm install --save-dev /absolute/path/to/use-as-dictionary/use-as-dictionary-1.0.0.tgz "webpack@^5"
+npm install --save-dev use-as-dictionary "webpack@^5"
 ```
 
 For Vite:
 
 ```sh
-npm install --save-dev /absolute/path/to/use-as-dictionary/use-as-dictionary-1.0.0.tgz "vite@^8"
+npm install --save-dev use-as-dictionary "vite@^8"
 ```
 
 Webpack and Vite are optional peer dependencies. Install your chosen bundler; neither adapter requires the other bundler to be installed.
@@ -158,7 +151,9 @@ Keep `dictionarySource` **outside the build output directory** so that Webpack's
 
 The persistent file is written atomically after successful asset generation and output writing. Failures during generation or output writing leave it unchanged, as do Vite builds with `build.write: false`. Errors in later Vite plugins' `closeBundle` cleanup cannot undo an already saved dictionary. Unchanged dictionary bytes are not rewritten. A reused dictionary retains the same public URL because the filename contains its content hash.
 
-Preserve the dictionary cache between builds, including in CI. Each example stores its own `.dictionary-cache/styles.dat` outside its `build/` directory and excludes the cache from Git. Editing [examples/shared/ui/styles.css](examples/shared/ui/styles.css) while retaining the caches lets you observe reuse or replacement with either bundler.
+Each example versions its own `.dictionary-cache/styles.dat` outside its `build/` directory. Keep these source dictionaries in Git so developers and CI checkouts start from the same saved dictionaries. When `autoUpdate` creates or replaces a dictionary, commit the updated `.dat` file together with the related source changes. Unchanged dictionaries do not need a new commit.
+
+Do not delete these files when cleaning build artifacts. `.gitattributes` preserves their exact bytes across platforms by disabling text conversion and automatic text merging. Other local dictionary cache files remain ignored. Editing [examples/shared/ui/styles.css](examples/shared/ui/styles.css) while retaining the versioned dictionaries lets you observe reuse or replacement with either bundler.
 
 The threshold compares DCB with **uncompressed resource bytes**, not standard Brotli, and excludes the initial dictionary download. It is a replacement trigger, not a guarantee: the DCB header can prevent small resources from reaching the threshold even with a fresh dictionary.
 
@@ -247,8 +242,6 @@ use-as-dictionary/
 ├── README.md
 └── LICENSE
 ```
-
-The root package retains `"private": true` to prevent npm registry publication. This does not prevent publishing the repository on GitHub or creating a local tarball with `npm pack`.
 
 ## License
 

@@ -1,6 +1,9 @@
 node_modules/
 build/
-.dictionary-cache/
+# Share the configured source dictionaries; keep other cache files local.
+**/.dictionary-cache/*
+!examples/vue-webpack/.dictionary-cache/styles.dat
+!examples/vue-vite/.dictionary-cache/styles.dat
 test-results/
 playwright-report/
 *.log

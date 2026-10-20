@@ -65,11 +65,13 @@ Only one directory output is supported. Multiple outputs and `output.file` are r
 
 ## Persistent dictionary
 
-The first build creates the dictionary from the current CSS. Subsequent builds reuse it while `1 - dcb.length / css.length` remains at least `0.9`. Below that threshold, the current CSS becomes the new dictionary.
+Builds reuse the versioned dictionary while `1 - dcb.length / css.length` remains at least `0.9`. Below that threshold, the current CSS becomes the new dictionary. If the dictionary file is missing, the build creates it from the current CSS.
 
 The measurement includes the 36-byte DCB header and compares DCB with minified, uncompressed CSS. It excludes the initial dictionary download and does not compare DCB with ordinary Brotli. The threshold triggers replacement; small resources may still fall short after replacement.
 
-Preserve `examples/vue-vite/.dictionary-cache/styles.dat` between builds, including in CI. It is excluded from Git and kept outside `build/` so Vite's output cleanup does not delete it. The persistent file is written atomically after successful asset generation and output writing. Failures during generation or output writing and builds using `build.write: false` leave it unchanged; unchanged dictionary bytes are not rewritten. A later plugin's `closeBundle` cleanup error cannot undo a dictionary already saved.
+`examples/vue-vite/.dictionary-cache/styles.dat` is versioned in Git so developers and CI checkouts reuse the same saved dictionary. When `autoUpdate` creates or replaces it, commit the updated file together with the related source changes. It is kept outside `build/` so Vite's output cleanup does not delete it; do not delete it as disposable cache. `.gitattributes` preserves its exact bytes across platforms.
+
+The persistent file is written atomically after successful asset generation and output writing. Failures during generation or output writing and builds using `build.write: false` leave it unchanged; unchanged dictionary bytes are not rewritten. A later plugin's `closeBundle` cleanup error cannot undo a dictionary already saved.
 
 Edit [the shared stylesheet](../shared/ui/styles.css) and rebuild while retaining the cache to observe reuse or replacement. The same source is used by the Webpack example, which maintains a separate dictionary cache.
 

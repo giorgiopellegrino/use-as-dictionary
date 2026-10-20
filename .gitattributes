@@ -1,0 +1,2 @@
+# Preserve exact dictionary bytes and avoid text conversion or automatic merging.
+**/.dictionary-cache/*.dat binary

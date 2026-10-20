@@ -45,7 +45,7 @@ When the cache is missing, the current CSS becomes the first dictionary. Later b
 
 This measurement includes the 36-byte DCB header and compares DCB with minified, uncompressed CSS. It excludes the initial dictionary download and does not compare DCB with ordinary Brotli.
 
-Preserve `examples/vue-webpack/.dictionary-cache/styles.dat` between builds, including in CI. It is excluded from Git and sits outside `build/`, so cleaning the Webpack output does not remove it. To try reuse, edit [the shared stylesheet](../shared/ui/styles.css) and rebuild without deleting the cache.
+`examples/vue-webpack/.dictionary-cache/styles.dat` is versioned in Git so developers and CI checkouts reuse the same saved dictionary. When `autoUpdate` creates or replaces it, commit the updated file together with the related source changes. It sits outside `build/`, so cleaning the Webpack output does not remove it; do not delete it as disposable cache. `.gitattributes` preserves its exact bytes across platforms. To try reuse, edit [the shared stylesheet](../shared/ui/styles.css) and rebuild while retaining the dictionary.
 
 Paths below are relative to `examples/vue-webpack/`:
 
