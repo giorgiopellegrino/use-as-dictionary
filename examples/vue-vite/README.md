@@ -51,12 +51,13 @@ Paths below are relative to `examples/vue-vite/`:
   styles.dat
 build/
   index.html
-  dictionaries/styles.<sha256>.dat
+  dictionaries/
+    styles.<sha256>.dat
+    compression-dictionary-manifest.json
   dist/
     app.<hash>.js
     styles.<hash>.css
     styles.<hash>.css.dcb
-    compression-dictionary-manifest.json
 ```
 
 The adapter applies only to `vite build`. Vite's development server does not generate dictionaries or handle dictionary discovery and HTTP negotiation. This example uses completed builds and the shared Node server for the transfer demonstration.
@@ -77,7 +78,7 @@ Edit [the shared stylesheet](../shared/ui/styles.css) and rebuild while retainin
 
 ## Discovery, negotiation, and measurements
 
-The public manifest is `/dist/compression-dictionary-manifest.json`. Its dictionary identities and the digest in each `.dcb` header let the server associate the CSS with its dictionary and verify the published `.dat` bytes. The [root documentation](../../README.md#manifest-and-dcb-format) describes the format shared by both adapters.
+The public manifest is `/dictionaries/compression-dictionary-manifest.json`. Its dictionary identities and the digest in each `.dcb` header let the server associate the CSS with its dictionary and verify the published `.dat` bytes. The [root documentation](../../README.md#manifest-and-dcb-format) describes the format shared by both adapters.
 
 The server inserts `<link rel="compression-dictionary">` into the HTML head, sets the corresponding `Link` header, and serves the dictionary with `Use-As-Dictionary: match="/dist/styles.*.css"`, an `id`, and an immutable two-week cache policy. Discovery links appear in the HTTP response, rather than in the built HTML file.
 

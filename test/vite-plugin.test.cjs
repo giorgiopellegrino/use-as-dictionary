@@ -7,7 +7,7 @@ const { createHash } = require('node:crypto');
 const brotli = require('brotli-wasm-custom-dictionary');
 const CompressionDictionaryPlugin = require('use-as-dictionary/vite');
 
-const MANIFEST_NAME = 'dist/compression-dictionary-manifest.json';
+const MANIFEST_NAME = 'dictionaries/compression-dictionary-manifest.json';
 const hash = (bytes) => createHash('sha256').update(bytes).digest();
 
 function fixture(t, files = {}) {
@@ -253,7 +253,7 @@ test('vite: overlapping selectors, existing DCB files and reserved manifest path
   ]), /output collision at a\.txt\.dcb/);
   await assert.rejects(project.build([
     emitAssets({ 'a.txt': 'resource', [MANIFEST_NAME]: '{}' }), new CompressionDictionaryPlugin({ test: 'a.txt' }),
-  ]), /output collision at dist\/compression-dictionary-manifest\.json/);
+  ]), /output collision at dictionaries\/compression-dictionary-manifest\.json/);
   await assert.rejects(project.build([
     new CompressionDictionaryPlugin({ input: 'input.txt', dcbFilename: MANIFEST_NAME }),
   ]), /reserved for the dictionary manifest/);

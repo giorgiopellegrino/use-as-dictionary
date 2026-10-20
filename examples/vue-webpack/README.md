@@ -54,19 +54,20 @@ Paths below are relative to `examples/vue-webpack/`:
   styles.dat
 build/
   index.html
-  dictionaries/styles.<sha256>.dat
+  dictionaries/
+    styles.<sha256>.dat
+    compression-dictionary-manifest.json
   dist/
     app.<contenthash>.js
     styles.<contenthash>.css
     styles.<contenthash>.css.dcb
-    compression-dictionary-manifest.json
 ```
 
 The plugin generates `.dat`, `.dcb`, and the manifest. The server generates ordinary Brotli and gzip representations at request time with `node:zlib`; there are no `.br` or `.gz` build files. The CSS retains its original URL, and the server selects its representation.
 
 ## Manifest and discovery
 
-The public manifest is available at `/dist/compression-dictionary-manifest.json`:
+The public manifest is available at `/dictionaries/compression-dictionary-manifest.json`:
 
 ```json
 {

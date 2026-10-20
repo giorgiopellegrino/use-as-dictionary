@@ -22,7 +22,7 @@ test('Il browser negozia DCB, decodifica il CSS e applica il foglio di stile', a
       if (!response.ok) throw new Error(`Statistiche HTTP ${response.status}`);
       return response.json();
     });
-    expect(metrics.manifestUrl).toBe('/dist/compression-dictionary-manifest.json');
+    expect(metrics.manifestUrl).toBe('/dictionaries/compression-dictionary-manifest.json');
     const manifest = await page.evaluate(async (url) => {
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Manifest produzione HTTP ${response.status}`);

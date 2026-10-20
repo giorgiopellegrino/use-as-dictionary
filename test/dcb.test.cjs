@@ -10,7 +10,7 @@ const brotli = require('brotli-wasm-custom-dictionary');
 const { createDemoServer } = require('../examples/shared/server/index.cjs');
 
 const rootDir = path.resolve(__dirname, '../examples/vue-webpack/build');
-const manifestUrl = '/dist/compression-dictionary-manifest.json';
+const manifestUrl = '/dictionaries/compression-dictionary-manifest.json';
 const productionManifest = JSON.parse(fs.readFileSync(path.join(rootDir, manifestUrl.slice(1)), 'utf8'));
 const logger = { info() {}, error() {} };
 const server = createDemoServer({ rootDir, logger });

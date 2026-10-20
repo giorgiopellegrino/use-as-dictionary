@@ -62,11 +62,11 @@ With `output.path` set to `build/`, this produces:
 ```text
 build/
 ├── dictionaries/
-│   └── styles.<sha256>.dat
+│   ├── styles.<sha256>.dat
+│   └── compression-dictionary-manifest.json
 └── dist/
     ├── styles.<contenthash>.css
-    ├── styles.<contenthash>.css.dcb
-    └── compression-dictionary-manifest.json
+    └── styles.<contenthash>.css.dcb
 ```
 
 The original CSS remains available for fallback responses. The `.dcb` file is an alternative representation of that CSS, served at the original CSS URL with `Content-Encoding: dcb`.
@@ -159,7 +159,7 @@ The threshold compares DCB with **uncompressed resource bytes**, not standard Br
 
 ## Manifest and DCB format
 
-All plugin instances in a build contribute to `dist/compression-dictionary-manifest.json`:
+All plugin instances in a build contribute to `dictionaries/compression-dictionary-manifest.json`:
 
 ```json
 {

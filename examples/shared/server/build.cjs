@@ -3,7 +3,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { encodeBody } = require('./negotiation.cjs');
 
-const MANIFEST_NAME = 'dist/compression-dictionary-manifest.json';
+const MANIFEST_NAME = 'dictionaries/compression-dictionary-manifest.json';
 const MANIFEST_URL = `/${MANIFEST_NAME}`;
 const DICTIONARY_MATCH = '/dist/styles.*.css';
 const DCB_MAGIC = Buffer.from([0xff, 0x44, 0x43, 0x42]);

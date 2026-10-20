@@ -22,7 +22,7 @@ function assertDcbOutput(outputPath, dcbFilename, content, brotli) {
   const fs = require('node:fs');
   const path = require('node:path');
   const manifest = JSON.parse(fs.readFileSync(
-    path.join(outputPath, 'dist/compression-dictionary-manifest.json'), 'utf8',
+    path.join(outputPath, 'dictionaries/compression-dictionary-manifest.json'), 'utf8',
   ));
   const hash = createHash('sha256').update(content).digest();
   const dictionaryName = `dictionaries/${hash.toString('hex')}.dat`;

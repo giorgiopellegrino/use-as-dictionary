@@ -10,7 +10,7 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const brotli = require('brotli-wasm-custom-dictionary');
 const CompressionDictionaryPlugin = require('use-as-dictionary/webpack');
-const MANIFEST_NAME = 'dist/compression-dictionary-manifest.json';
+const MANIFEST_NAME = 'dictionaries/compression-dictionary-manifest.json';
 
 function fixture(t, files = {}) {
   const temporaryRoot = path.resolve(os.tmpdir());
