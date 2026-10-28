@@ -74,7 +74,8 @@ The public manifest is available at `/dictionaries/compression-dictionary-manife
   "dictionaries": {
     "dictionaries/styles.<sha256>.dat": {
       "sha256Base64": "...=",
-      "availableDictionary": ":...=:"
+      "availableDictionary": ":...=:",
+      "name": "styles"
     }
   }
 }

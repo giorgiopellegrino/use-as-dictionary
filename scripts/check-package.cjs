@@ -31,6 +31,7 @@ function assertDcbOutput(outputPath, dcbFilename, content, brotli) {
       [dictionaryName]: {
         sha256Base64: hash.toString('base64'),
         availableDictionary: `:${hash.toString('base64')}:`,
+        name: '',
       },
     },
   });

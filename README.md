@@ -166,13 +166,16 @@ All plugin instances in a build contribute to `dictionaries/compression-dictiona
   "dictionaries": {
     "dictionaries/styles.<sha256>.dat": {
       "sha256Base64": "...=",
-      "availableDictionary": ":...=:"
+      "availableDictionary": ":...=:",
+      "name": "styles"
     }
   }
 }
 ```
 
 Keys are paths relative to the output directory. `sha256Base64` is the SHA-256 digest of the raw dictionary bytes, encoded as Base64. `availableDictionary` wraps that same value in colons for comparison with the request header. The manifest lists dictionary identities; it does not map resources to dictionaries.
+
+`name` is the dictionary filename without its hash and `.dat` extension: the basename of `dictionarySource` without its final extension. It preserves dots within the name, so `styles.v1.css` produces `"name": "styles.v1"`. Without `dictionarySource`, the dictionary filename contains only the hash and extension, and `name` is an empty string.
 
 Each `.dcb` starts with the four magic bytes `ff 44 43 42`, followed by the dictionary's 32-byte SHA-256 digest and the Shared Brotli stream. A server can match that digest to the manifest entry and verify the published `.dat` bytes before advertising or serving the representation. The manifest path is reserved by the plugin.
 

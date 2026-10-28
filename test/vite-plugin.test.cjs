@@ -71,7 +71,11 @@ function assertManifest(assets) {
   assert.deepEqual(Object.keys(manifest.dictionaries), dictionaryNames(assets));
   for (const name of dictionaryNames(assets)) {
     const sha256Base64 = hash(assets.get(name)).toString('base64');
-    assert.deepEqual(manifest.dictionaries[name], { sha256Base64, availableDictionary: `:${sha256Base64}:` });
+    assert.deepEqual(manifest.dictionaries[name], {
+      sha256Base64,
+      availableDictionary: `:${sha256Base64}:`,
+      name: path.posix.basename(name).replace(/(?:^|\.)[a-f0-9]{64}\.dat$/, ''),
+    });
   }
   return manifest;
 }

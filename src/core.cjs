@@ -109,7 +109,11 @@ function compressResource({ name, content, snapshot, dictionaryPrefix = '', qual
     dictionary,
     dictionaryName: `dictionaries/${dictionaryPrefix}${hash.toString('hex')}.dat`,
     dcb: Buffer.concat([MAGIC, hash, compressed]),
-    manifestEntry: { sha256Base64, availableDictionary: `:${sha256Base64}:` },
+    manifestEntry: {
+      sha256Base64,
+      availableDictionary: `:${sha256Base64}:`,
+      name: dictionaryPrefix.slice(0, -1),
+    },
     changed: snapshot === undefined || !snapshot.equals(dictionary),
     action: snapshot === undefined ? 'created' : dictionary === snapshot ? 'reused' : 'updated',
     saving: content.length
